@@ -65,6 +65,7 @@ function addStyles() {
 
                 .wlw-table-container {
                     background: #fdf6f3;
+		    height: 350px !important;
                 }
 
                 .wlw-table-header {
