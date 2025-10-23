@@ -395,19 +395,28 @@ router.patch("/temp-election/candidate/add", async (req, res) => {
       { $push: { "electionInfo.candidates": candidates } },
       { new: true }
     );
-    const newCandidates = candidates.map(
-      (candidateId) =>
-        new CandidateElectionModel({ election, candidate: candidateId })
-    );
+
+    // First, get all candidate data including constituency information
+    const candidateData = await CandidatesModel.find({
+      _id: { $in: candidates }
+    }).select("constituency");
+
+    // Create new candidates with constituency information
+    const newCandidates = candidateData.map((candidate) => {
+      return new CandidateElectionModel({ 
+        election, 
+        candidate: candidate._id,
+        constituency: candidate.constituency[0] // Use the first constituency
+      });
+    });
 
     const newAddedCandidates = await CandidateElectionModel.bulkSave(
       newCandidates
     );
 
-    for (let i = 0; i < candidates.length; i++) {
-      const candidate = await CandidatesModel.findById(candidates[i]).select(
-        "constituency"
-      );
+    // Create constituency-election relationships
+    for (let i = 0; i < candidateData.length; i++) {
+      const candidate = candidateData[i];
       const isFound = await ConstituencyElectionModel.findOne({
         election,
         constituency: candidate.constituency[0],
