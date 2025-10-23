@@ -14,6 +14,124 @@ const mongoose = require("mongoose");
 
 const redis = RedisManager.getInstance();
 
+// Helper function to recalculate all seats for an election
+async function recalculateAllSeatsForElection(electionId) {
+  try {
+    console.log(`\n=== Recalculating all seats for election ${electionId} ===`);
+    
+    // Get all constituencies in this election
+    const constituencies = await ConstituencyElectionModel.find({
+      election: electionId
+    }).populate('constituency');
+
+    console.log(`Found ${constituencies.length} constituencies`);
+
+    // Reset all party seats to 0
+    await PartyElectionModel.updateMany(
+      { election: electionId },
+      { seatsWon: 0 }
+    );
+
+    // For each constituency, find the winner and award the seat
+    for (const constituency of constituencies) {
+      const candidatesInConstituency = await CandidateElectionModel.find({
+        election: electionId,
+        constituency: constituency.constituency._id
+      }).populate('candidate');
+
+      if (candidatesInConstituency.length === 0) continue;
+
+      // Find the candidate with maximum votes
+      const maxVotes = Math.max(...candidatesInConstituency.map(c => c.votesReceived || 0));
+      const winningCandidate = candidatesInConstituency.find(c => c.votesReceived === maxVotes);
+
+      if (!winningCandidate || maxVotes === 0) continue;
+
+      // Get the party of the winning candidate
+      const candidateData = await CandidatesModel.findById(winningCandidate.candidate).populate('party');
+      if (!candidateData || !candidateData.party) continue;
+
+      const winningPartyId = candidateData.party._id;
+
+      // Award the seat to the winning party
+      let partyElectionRecord = await PartyElectionModel.findOne({
+        election: electionId,
+        party: winningPartyId
+      });
+
+      if (!partyElectionRecord) {
+        partyElectionRecord = new PartyElectionModel({
+          election: electionId,
+          party: winningPartyId,
+          seatsWon: 1
+        });
+        await partyElectionRecord.save();
+        console.log(`Created new record with 1 seat for ${candidateData.party.party} in ${constituency.constituency.name}`);
+      } else {
+        partyElectionRecord.seatsWon = (partyElectionRecord.seatsWon || 0) + 1;
+        await partyElectionRecord.save();
+        console.log(`Awarded seat to ${candidateData.party.party} in ${constituency.constituency.name} (total: ${partyElectionRecord.seatsWon})`);
+      }
+    }
+
+    console.log(`=== Recalculation completed for election ${electionId} ===\n`);
+  } catch (error) {
+    console.error('Error recalculating seats:', error);
+  }
+}
+
+// Helper function to calculate and update party seats based on constituency winners
+async function calculateAndUpdateSeats(electionId, constituencyId) {
+  try {
+    console.log(`\n=== Calculating seats for election ${electionId}, constituency ${constituencyId} ===`);
+    
+    // Get all candidates in this constituency for this election
+    const candidatesInConstituency = await CandidateElectionModel.find({
+      election: electionId,
+      constituency: constituencyId
+    }).populate('candidate');
+
+    console.log(`Found ${candidatesInConstituency.length} candidates in constituency`);
+    candidatesInConstituency.forEach(c => {
+      console.log(`- ${c.candidate.name}: ${c.votesReceived} votes`);
+    });
+
+    if (candidatesInConstituency.length === 0) {
+      console.log('No candidates found, returning');
+      return;
+    }
+
+    // Find the candidate with maximum votes in this constituency
+    const maxVotes = Math.max(...candidatesInConstituency.map(c => c.votesReceived || 0));
+    const winningCandidate = candidatesInConstituency.find(c => c.votesReceived === maxVotes);
+
+    console.log(`Max votes: ${maxVotes}, Winner: ${winningCandidate?.candidate?.name}`);
+
+    if (!winningCandidate || maxVotes === 0) {
+      console.log('No clear winner or no votes, returning');
+      return; // No votes or no clear winner
+    }
+
+    // Get the party of the winning candidate
+    const candidateData = await CandidatesModel.findById(winningCandidate.candidate).populate('party');
+    if (!candidateData || !candidateData.party) {
+      console.log('No party data found for winning candidate');
+      return;
+    }
+
+    const winningPartyId = candidateData.party._id;
+    console.log(`Winning party: ${candidateData.party.party} (${winningPartyId})`);
+
+    // Recalculate all seats for this election based on current vote counts
+    // This ensures accuracy by recalculating from scratch
+    await recalculateAllSeatsForElection(electionId);
+
+    console.log(`=== Seat calculation completed for ${candidateData.party.party} ===\n`);
+  } catch (error) {
+    console.error('Error calculating seats:', error);
+  }
+}
+
 const router = express.Router();
 
 router.get("/party-summary", async (req, res) => {
@@ -369,6 +487,15 @@ router.patch("/temp-election/main-info-update/:id", async (req, res) => {
       return res.status(400).json({ message: "Bad Request" });
     }
 
+    // If election is marked as completed, automatically mark all constituencies as completed
+    if (status.toLowerCase() === 'completed') {
+      await ConstituencyElectionModel.updateMany(
+        { election: id },
+        { status: 'completed' }
+      );
+      console.log(`All constituencies for election ${id} marked as completed`);
+    }
+
     // clear the election widgets cached result from redis
     redis.delete(`widget_election_widget`);
     redis.delete(`widget_bihar_election_map_${state}_${year}_${electionType}`);
@@ -606,6 +733,16 @@ router.put("/temp-election/candidate/update", async (req, res) => {
       return res.status(400).json({ message: "Bad Request" });
     }
     console.log(updatedDocument);
+
+    // Check if election is ongoing and automatically calculate seats
+    const electionData = await TempElection.findById(election);
+    console.log(`Election status: ${electionData?.status}, Election ID: ${election}`);
+    if (electionData && electionData.status === 'ongoing') {
+      console.log('Election is ongoing, calculating seats...');
+      await calculateAndUpdateSeats(election, updatedDocument.constituency);
+    } else {
+      console.log('Election is not ongoing, skipping seat calculation');
+    }
 
     const { state, year, type } = redisKeys;
 
