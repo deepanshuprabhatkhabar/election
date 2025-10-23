@@ -1,6 +1,6 @@
 // API endpoints
-const API_URL = "https://election.prabhatkhabar.com/election/hot-candidate/result";
-const YEARS_API_URL = "https://election.prabhatkhabar.com/election/years/Bihar"; // stateName is 'Bihar' by default
+const API_URL = "https://election-stage.prabhatkhabar.com/election/hot-candidate/result";
+const YEARS_API_URL = "https://election-stage.prabhatkhabar.com/election/years/Bihar"; // stateName is 'Bihar' by default
 
 // Inject styles
 function injectStyles() {

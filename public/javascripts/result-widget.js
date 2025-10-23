@@ -5,7 +5,7 @@
   const DEFAULT_CONFIG = {
     containerId: "erw-container",
     title: "बिहार विधानसभा चुनाव परिणाम",
-    apiEndpoint: "https://election.prabhatkhabar.com/elections/state-elections",
+    apiEndpoint: "https://election-stage.prabhatkhabar.com/elections/state-elections",
     state: "Bihar",
     years: ["2020", "2015", "2010"],
     defaultYear: "2020",

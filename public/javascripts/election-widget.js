@@ -5,7 +5,7 @@
     const DEFAULT_CONFIG = {
         containerId: 'ew-container',
         title: 'बिहार विधानसभा चुनाव परिणाम',
-        baseUrl: 'https://election.prabhatkhabar.com',
+        baseUrl: 'https://election-stage.prabhatkhabar.com',
         apiEndpoint: '/elections/state-elections',
         state: 'Bihar',
         refreshInterval: 30000, // 30 seconds
@@ -788,7 +788,7 @@
                         containerId: container.id,
                         state: container.dataset.state || 'Bihar',
                         apiEndpoint: container.dataset.apiEndpoint || '/elections/state-elections',
-                        baseUrl: 'https://election.prabhatkhabar.com'
+                        baseUrl: 'https://election-stage.prabhatkhabar.com'
                     });
                     container.dataset.initialized = 'true';
                 } catch (error) {
@@ -806,7 +806,7 @@
                             containerId: container.id,
                             state: container.dataset.state || 'Bihar',
                             apiEndpoint: container.dataset.apiEndpoint || '/elections/state-elections',
-                            baseUrl: 'https://election.prabhatkhabar.com'
+                            baseUrl: 'https://election-stage.prabhatkhabar.com'
                         });
                         container.dataset.initialized = 'true';
                     } catch (error) {
@@ -836,7 +836,7 @@
         return new ElectionWidget({ 
             containerId, 
             ...config,
-            baseUrl: 'https://election.prabhatkhabar.com'
+            baseUrl: 'https://election-stage.prabhatkhabar.com'
         });
     };
 
