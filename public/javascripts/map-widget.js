@@ -2948,7 +2948,7 @@ class MapWidget {
     window.parent.postMessage({ election_iframe: height }, "*");
   }
 
-  async getData(clickedYear = "2020") {
+  async getData(clickedYear = "2025") {
     const params = new URLSearchParams(document.location.search);
     let stateName = params.get("state") || "Bihar";
     stateName = stateName[0].toUpperCase() + stateName.slice(1);
