@@ -24,147 +24,147 @@ async function getCandidateElectionDetails(
 	electionId,
 	allowedConstituencies,
 ) {
+	const pipeline = [
+		{ $match: { election: new mongoose.Types.ObjectId(electionId) } },
 
-const pipeline = [
-  { $match: { election: new mongoose.Types.ObjectId(electionId) } },
+		// Lookup candidate info
+		{
+			$lookup: {
+				from: "candidates",
+				localField: "candidate",
+				foreignField: "_id",
+				as: "candidateInfo",
+			},
+		},
+		{ $unwind: "$candidateInfo" },
 
-  // Lookup candidate info
-  {
-    $lookup: {
-      from: "candidates",
-      localField: "candidate",
-      foreignField: "_id",
-      as: "candidateInfo",
-    },
-  },
-  { $unwind: "$candidateInfo" },
+		// Optional user filter
+		...(userType === "user"
+			? [
+				{
+					$match: {
+						"candidateInfo.constituency": {
+							$in: allowedConstituencies.map((id) =>
+								typeof id === "string" ? new mongoose.Types.ObjectId(id) : id,
+							),
+						},
+					},
+				},
+			]
+			: []),
 
-  // Optional user filter
-  ...(userType === "user"
-    ? [
-        {
-          $match: {
-            "candidateInfo.constituency": {
-              $in: allowedConstituencies.map((id) =>
-                typeof id === "string" ? new mongoose.Types.ObjectId(id) : id
-              ),
-            },
-          },
-        },
-      ]
-    : []),
+		// Normalize constituency field (ensure always array)
+		{
+			$addFields: {
+				"candidateInfo.constituency": {
+					$cond: [
+						{ $isArray: "$candidateInfo.constituency" },
+						"$candidateInfo.constituency",
+						["$candidateInfo.constituency"],
+					],
+				},
+			},
+		},
 
-  // Normalize constituency field (ensure always array)
-  {
-    $addFields: {
-      "candidateInfo.constituency": {
-        $cond: [
-          { $isArray: "$candidateInfo.constituency" },
-          "$candidateInfo.constituency",
-          ["$candidateInfo.constituency"],
-        ],
-      },
-    },
-  },
+		// Unwind so we get one doc per constituency
+		{ $unwind: "$candidateInfo.constituency" },
 
-  // Unwind so we get one doc per constituency
-  { $unwind: "$candidateInfo.constituency" },
+		// Lookup constituency info
+		{
+			$lookup: {
+				from: "constituencies",
+				localField: "candidateInfo.constituency",
+				foreignField: "_id",
+				as: "constituencyInfo",
+			},
+		},
+		{ $unwind: "$constituencyInfo" },
 
-  // Lookup constituency info
-  {
-    $lookup: {
-      from: "constituencies",
-      localField: "candidateInfo.constituency",
-      foreignField: "_id",
-      as: "constituencyInfo",
-    },
-  },
-  { $unwind: "$constituencyInfo" },
+		// Lookup party info
+		{
+			$lookup: {
+				from: "parties",
+				localField: "candidateInfo.party",
+				foreignField: "_id",
+				as: "partyInfo",
+			},
+		},
+		{ $unwind: { path: "$partyInfo", preserveNullAndEmptyArrays: true } },
 
-  // Lookup party info
-  {
-    $lookup: {
-      from: "parties",
-      localField: "candidateInfo.party",
-      foreignField: "_id",
-      as: "partyInfo",
-    },
-  },
-  { $unwind: { path: "$partyInfo", preserveNullAndEmptyArrays: true } },
+		// Lookup votes info
+		{
+			$lookup: {
+				from: "electioncandidates",
+				let: { candidateId: "$candidateInfo._id" },
+				pipeline: [
+					{
+						$match: {
+							$expr: {
+								$and: [
+									{
+										$eq: ["$election", new mongoose.Types.ObjectId(electionId)],
+									},
+									{ $eq: ["$candidate", "$$candidateId"] },
+								],
+							},
+						},
+					},
+					{ $project: { votesReceived: 1 } },
+				],
+				as: "voteInfo",
+			},
+		},
+		{ $unwind: { path: "$voteInfo", preserveNullAndEmptyArrays: true } },
 
-  // Lookup votes info
-  {
-    $lookup: {
-      from: "electioncandidates",
-      let: { candidateId: "$candidateInfo._id" },
-      pipeline: [
-        {
-          $match: {
-            $expr: {
-              $and: [
-                { $eq: ["$election", new mongoose.Types.ObjectId(electionId)] },
-                { $eq: ["$candidate", "$$candidateId"] },
-              ],
-            },
-          },
-        },
-        { $project: { votesReceived: 1 } },
-      ],
-      as: "voteInfo",
-    },
-  },
-  { $unwind: { path: "$voteInfo", preserveNullAndEmptyArrays: true } },
+		// Lookup constituency election status (one per constituency now)
+		{
+			$lookup: {
+				from: "electionconstituencies",
+				let: {
+					electionId: new mongoose.Types.ObjectId(electionId),
+					constituencyId: "$candidateInfo.constituency",
+				},
+				pipeline: [
+					{
+						$match: {
+							$expr: {
+								$and: [
+									{ $eq: ["$election", "$$electionId"] },
+									{ $eq: ["$constituency", "$$constituencyId"] },
+								],
+							},
+						},
+					},
+					{ $project: { status: 1, _id: 0 } },
+				],
+				as: "constituencyElectionStatus",
+			},
+		},
+		{
+			$unwind: {
+				path: "$constituencyElectionStatus",
+				preserveNullAndEmptyArrays: true,
+			},
+		},
 
-  // Lookup constituency election status (one per constituency now)
-  {
-    $lookup: {
-      from: "electionconstituencies",
-      let: {
-        electionId: new mongoose.Types.ObjectId(electionId),
-        constituencyId: "$candidateInfo.constituency",
-      },
-      pipeline: [
-        {
-          $match: {
-            $expr: {
-              $and: [
-                { $eq: ["$election", "$$electionId"] },
-                { $eq: ["$constituency", "$$constituencyId"] },
-              ],
-            },
-          },
-        },
-        { $project: { status: 1, _id: 0 } },
-      ],
-      as: "constituencyElectionStatus",
-    },
-  },
-  {
-    $unwind: {
-      path: "$constituencyElectionStatus",
-      preserveNullAndEmptyArrays: true,
-    },
-  },
-
-  // Final projection
-  {
-    $project: {
-      _id: 1,
-      election: 1,
-      candidate: {
-        _id: "$candidateInfo._id",
-        name: "$candidateInfo.name",
-        constituency: "$constituencyInfo",
-        party: "$partyInfo",
-        votesReceived: { $ifNull: ["$voteInfo.votesReceived", 0] },
-      },
-      constituencyStatus: {
-        $ifNull: ["$constituencyElectionStatus.status", "unknown"],
-      },
-    },
-  },
-];
-
+		// Final projection
+		{
+			$project: {
+				_id: 1,
+				election: 1,
+				candidate: {
+					_id: "$candidateInfo._id",
+					name: "$candidateInfo.name",
+					constituency: "$constituencyInfo",
+					party: "$partyInfo",
+					votesReceived: { $ifNull: ["$voteInfo.votesReceived", 0] },
+				},
+				constituencyStatus: {
+					$ifNull: ["$constituencyElectionStatus.status", "unknown"],
+				},
+			},
+		},
+	];
 
 	// Execute the aggregation
 	const candidateElections = await CandidateElectioModel.aggregate(pipeline);
@@ -994,6 +994,8 @@ router.get(
 	isAdmin,
 	async function(req, res, next) {
 		try {
+			console.log("This is user role", req.userRole);
+
 			const constituencies = await Constituency.find().sort({ name: 1 });
 			const parties = await Party.find();
 
@@ -1015,6 +1017,7 @@ router.get(
 					constituencies,
 					parties,
 					selectedCons: req.query.cons, // Pass selected constituency name to the template
+					userRole: req.userRole,
 				});
 			}
 
@@ -1727,7 +1730,6 @@ router.get("/election/hot-candidate/result", async (req, res) => {
 			key += `_${candidateName}`;
 		}
 
-		
 		const cachedResults = await redis.get(key);
 
 		if (cachedResults) {
@@ -1840,7 +1842,7 @@ router.get("/election/hot-candidate/result", async (req, res) => {
 		}
 		redis.set(key, {
 			success: true,
-			data: results
+			data: results,
 		});
 
 		res.status(200).json({
