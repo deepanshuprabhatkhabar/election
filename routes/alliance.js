@@ -96,6 +96,10 @@ router.get("/alliances-data/:electionId", async (req, res) => {
 				},
 			},
 
+			{
+				$sort: { allianceSeats: -1 }
+			},
+
 			// 7️⃣ Final projection
 			{
 				$project: {
