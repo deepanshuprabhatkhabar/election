@@ -74,7 +74,7 @@ thead{
 <body class="bg-gray-50">
 	<%- include('navbar.ejs') %>
 
-		<div class="container mx-auto px-4 py-8">
+		<div class="w-[800px] mx-auto px-4 py-8">
 			<div class="mb-6 flex justify-between items-center"></div>
 
 			<form id="electionForm" class="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-6">
@@ -298,7 +298,7 @@ thead{
 															%>
 														/>
 													</td>
-													<td style="display: flex; flex-wrap: wrap; gap: 5px;"
+													<td style="display: flex; gap: 5px;"
 														class="px-6 py-4">
 														<button type="button"
 															onclick="updateCandidateVotes('<%= candidate.candidate._id %>')"
@@ -1009,8 +1009,6 @@ thead{
 			const isAdmin = adminIds.includes(currentUserId);
 			const allPartiesList = <%- JSON.stringify(allPartiesList || []) %>;
 			const allCandidatesList = <%- JSON.stringify(allCandidatesList || []) %>
-			const something = <%- JSON.stringify(candidateElectionDetails || []) %>
-				console.log(something)
 
 			// Dialog elements
 			const dialog = document.getElementById('partySelectionDialog');
