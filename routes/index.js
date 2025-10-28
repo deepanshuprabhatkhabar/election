@@ -463,6 +463,16 @@ router.get(
 				.populate("party", "party")
 				.populate("constituency", "name");
 
+			candidateElectionDetails.sort((firstCan, secondCan) => {
+				return (
+					secondCan.candidate.votesReceived - firstCan.candidate.votesReceived
+				);
+			});
+
+			candidateElectionDetails.sort((firstCan, secondCan) => {
+				secondCan.candidate.votesReceived - firstCan.candidate.votesReceived;
+			});
+
 			res.render("temp-edit-election.ejs", {
 				election,
 				user: req.session.user,
