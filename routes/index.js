@@ -1620,22 +1620,25 @@ router.get("/election/hot-candidates", async (req, res) => {
 	try {
 		const { state, year } = req.query;
 
-		const key = `widget_bihar_hot_candidate_${state}_${year}`;
-		const cachedResults = await redis.get(key);
-
-		if (cachedResults) {
-			return res.json(cachedResults);
-		}
+		// const key = `widget_bihar_hot_candidate_${state}_${year}`;
+		// const cachedResults = await redis.get(key);
+		//
+		// if (cachedResults) {
+		// 	return res.json(cachedResults);
+		// }
 
 		const result = await TempElection.aggregate([
-			// Match the election
+			// Match the election document for the given state and year
 			{ $match: { state: state, year: Number(year) } },
 
 			// Lookup candidates with population
 			{
 				$lookup: {
 					from: "candidates",
-					let: { candidateIds: "$electionInfo.candidates" },
+					let: {
+						candidateIds: "$electionInfo.candidates",
+						electionId: "$_id", // pass election _id
+					},
 					pipeline: [
 						{
 							$match: {
@@ -1650,9 +1653,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 								localField: "party",
 								foreignField: "_id",
 								as: "party",
-								pipeline: [
-									{ $project: { party: 1, color_code: 1 } }, // Only get party name and color
-								],
+								pipeline: [{ $project: { party: 1, color_code: 1 } }],
 							},
 						},
 						// Populate constituency
@@ -1662,18 +1663,47 @@ router.get("/election/hot-candidates", async (req, res) => {
 								localField: "constituency",
 								foreignField: "_id",
 								as: "constituency",
-								pipeline: [
-									{ $project: { name: 1 } }, // Only get constituency name
-								],
+								pipeline: [{ $project: { name: 1 } }],
 							},
 						},
-						// Project only needed fields
+						// Lookup ElectionCandidate info (votesReceived + status)
+						{
+							$lookup: {
+								from: "electioncandidates", // Mongo pluralized form
+								let: {
+									candidateId: "$_id",
+									electionId: "$$electionId",
+								},
+								pipeline: [
+									{
+										$match: {
+											$expr: {
+												$and: [
+													{ $eq: ["$candidate", "$$candidateId"] },
+													{ $eq: ["$election", "$$electionId"] },
+												],
+											},
+										},
+									},
+									{
+										$project: {
+											votesReceived: 1,
+											status: 1,
+											_id: 0,
+										},
+									},
+								],
+								as: "electionStats",
+							},
+						},
+						// Final project
 						{
 							$project: {
 								name: 1,
 								image: 1,
-								party: { $arrayElemAt: ["$party", 0] }, // Unwind party
-								constituency: { $arrayElemAt: ["$constituency", 0] }, // Get first constituency
+								party: { $arrayElemAt: ["$party", 0] },
+								constituency: { $arrayElemAt: ["$constituency", 0] },
+								electionStats: { $arrayElemAt: ["$electionStats", 0] },
 							},
 						},
 					],
@@ -1681,7 +1711,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 				},
 			},
 
-			// Project final structure
+			// Final projection
 			{
 				$project: {
 					_id: 0,
@@ -1691,6 +1721,8 @@ router.get("/election/hot-candidates", async (req, res) => {
 						"party.party": 1,
 						"party.color_code": 1,
 						"constituency.name": 1,
+						"electionStats.votesReceived": 1,
+						"electionStats.status": 1,
 					},
 				},
 			},
@@ -1702,10 +1734,10 @@ router.get("/election/hot-candidates", async (req, res) => {
 				message: "Election not found",
 			});
 		}
-		redis.set(key, {
-			success: true,
-			data: result[0].hotCandidates,
-		});
+		// redis.set(key, {
+		// 	success: true,
+		// 	data: result[0].hotCandidates,
+		// });
 
 		return res.json({
 			success: true,

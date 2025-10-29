@@ -105,7 +105,7 @@ class CandidateSliderWidget {
 		return `data:image/svg+xml;base64,${btoa(svg)}`;
 	}
 
-	async fetchCandidates(electionYear = "2020") {
+	async fetchCandidates(electionYear = "2025") {
 		try {
 			this.showLoading();
 			const response = await fetch(
@@ -122,6 +122,7 @@ class CandidateSliderWidget {
 						? candidate.image
 						: this.generateAvatar(candidate.name),
 					colorCode: candidate.party.color_code,
+					electionStats: candidate.electionStats,
 				}));
 			} else {
 				throw new Error("Invalid API response");
@@ -243,32 +244,6 @@ class CandidateSliderWidget {
 	createStyles() {
 		const style = document.createElement("style");
 		style.textContent = `
-                * {
-                  margin: 0;
-                  padding: 0;
-                  box-sizing: border-box;
-                }
-
-                html, body {
-                  box-sizing: border-box;
-                }
-
-                body {
-                  font-family: Arial, sans-serif;
-                  background-color: #f4f4f4;
-                  display: flex;
-                  justify-content: center;
-                  align-items: center;
-                  min-height: 100vh;
-                  min-width: 100vw;
-                  max-width: 100vw;
-                  max-height: 100vh;
-                  padding: 0;
-                  margin: 0;
-                  overflow-x: hidden !important;
-                  overflow-y: hidden !important;
-                  box-sizing: border-box;
-                }
 
                 .election-hot-candidate-v1-slider-container {
                   width: 100%;
@@ -756,9 +731,16 @@ class CandidateSliderWidget {
 
 		// Optionally show previous blurred card from the second candidate onward
 		if (this.candidates.length > 2 && this.currentPosition > 0) {
-			const prevPosition = (this.currentPosition - 1 + this.candidates.length) % this.candidates.length;
+			const prevPosition =
+				(this.currentPosition - 1 + this.candidates.length) %
+				this.candidates.length;
 			const prevCandidate = this.candidates[prevPosition];
-			const prevCard = this.createCandidateCard(prevCandidate, false, false, true);
+			const prevCard = this.createCandidateCard(
+				prevCandidate,
+				false,
+				false,
+				true,
+			);
 			this.sliderContent.appendChild(prevCard);
 		}
 
@@ -773,7 +755,12 @@ class CandidateSliderWidget {
 		if (this.candidates.length > 1) {
 			const nextPosition = (this.currentPosition + 1) % this.candidates.length;
 			const nextCandidate = this.candidates[nextPosition];
-			const nextCard = this.createCandidateCard(nextCandidate, false, true, false);
+			const nextCard = this.createCandidateCard(
+				nextCandidate,
+				false,
+				true,
+				false,
+			);
 			this.sliderContent.appendChild(nextCard);
 		}
 
@@ -781,9 +768,14 @@ class CandidateSliderWidget {
 		this.setupEventListeners();
 	}
 
-	createCandidateCard(candidate, isCurrent = true, isNext = false, isPrev = false) {
+	createCandidateCard(
+		candidate,
+		isCurrent = true,
+		isNext = false,
+		isPrev = false,
+	) {
 		const card = document.createElement("div");
-		card.className = `election-hot-candidate-v1-candidate-card ${isCurrent ? 'current-candidate' : ''} ${isNext ? 'next-candidate' : ''} ${isPrev ? 'prev-candidate' : ''}`;
+		card.className = `election-hot-candidate-v1-candidate-card ${isCurrent ? "current-candidate" : ""} ${isNext ? "next-candidate" : ""} ${isPrev ? "prev-candidate" : ""}`;
 		card.style.setProperty("--party-color", candidate.colorCode || "#666");
 
 		const img = document.createElement("img");
@@ -809,6 +801,13 @@ class CandidateSliderWidget {
 		card.appendChild(name);
 		card.appendChild(partyBadge);
 		card.appendChild(location);
+		console.log(candidate);
+		if (candidate.electionStats && candidate.electionStats.status) {
+			const status = document.createElement("div");
+			status.className = "election-hot-candidate-v1-candidate-location";
+			status.textContent = candidate.electionStats.status;
+			card.appendChild(status);
+		}
 
 		return card;
 	}
@@ -839,8 +838,12 @@ class CandidateSliderWidget {
 		this.prevBtn.addEventListener("click", this.handlePrevClick);
 
 		// Auto-slide controls
-		this.sliderWrapper.addEventListener("mouseenter", () => this.stopAutoSlide());
-		this.sliderWrapper.addEventListener("mouseleave", () => this.startAutoSlide());
+		this.sliderWrapper.addEventListener("mouseenter", () =>
+			this.stopAutoSlide(),
+		);
+		this.sliderWrapper.addEventListener("mouseleave", () =>
+			this.startAutoSlide(),
+		);
 
 		// Touch support for mobile
 		this.setupTouchEvents(this.slideWithDebounce);
@@ -854,7 +857,10 @@ class CandidateSliderWidget {
 	startAutoSlide() {
 		if (this.candidates.length <= 1) return;
 		if (this.autoSlideInterval) clearInterval(this.autoSlideInterval);
-		this.autoSlideInterval = setInterval(() => this.slideWithDebounce("next"), 5000);
+		this.autoSlideInterval = setInterval(
+			() => this.slideWithDebounce("next"),
+			5000,
+		);
 	}
 
 	stopAutoSlide() {
@@ -870,7 +876,10 @@ class CandidateSliderWidget {
 
 	restartAutoSlideWithDelay(delayMs = 2000) {
 		this.stopAutoSlide();
-		this.autoSlideRestartTimeoutId = setTimeout(() => this.startAutoSlide(), delayMs);
+		this.autoSlideRestartTimeoutId = setTimeout(
+			() => this.startAutoSlide(),
+			delayMs,
+		);
 	}
 
 	setupTouchEvents(slideWithDebounce) {
@@ -896,7 +905,7 @@ class CandidateSliderWidget {
 			}
 		});
 
-	this.sliderWrapper.addEventListener("touchend", (e) => {
+		this.sliderWrapper.addEventListener("touchend", (e) => {
 			if (!isDragging) return;
 			const endX = e.changedTouches[0].clientX;
 			const deltaX = startX - endX;
@@ -912,14 +921,17 @@ class CandidateSliderWidget {
 		});
 	}
 
-
 	slide(direction) {
 		if (this.candidates.length <= 1) return;
 
 		if (direction === "next") {
-			this.currentPosition = (this.currentPosition + 1) % this.candidates.length;
+			this.currentPosition =
+				(this.currentPosition + 1) % this.candidates.length;
 		} else {
-			this.currentPosition = this.currentPosition === 0 ? this.candidates.length - 1 : this.currentPosition - 1;
+			this.currentPosition =
+				this.currentPosition === 0
+					? this.candidates.length - 1
+					: this.currentPosition - 1;
 		}
 
 		// Update the slider content with new current and next candidates
@@ -932,9 +944,7 @@ class CandidateSliderWidget {
 		);
 
 		try {
-			const result = await fetch(
-				`https://election-stage.prabhatkhabar.com/election/years/Bihar`,
-			);
+			const result = await fetch(`https://election-stage.prabhatkhabar.com/election/years/Bihar`);
 			const allYears = (await result.json()).data.availableYears;
 
 			// Set currentYear as instance property
@@ -943,8 +953,6 @@ class CandidateSliderWidget {
 			const years = [...new Set(allYears.map((item) => item))].sort(
 				(a, b) => b - a,
 			);
-
-			console.log(years);
 
 			years.forEach((year) => {
 				const tab = document.createElement("div");
@@ -1000,6 +1008,7 @@ class CandidateSliderWidget {
 				`https://election-stage.prabhatkhabar.com/election/hot-candidates?state=${this.state}&year=${electionYear}`,
 			);
 			const data = await response.json();
+			console.log(data);
 
 			if (data.success && data.data) {
 				this.candidates = data.data.map((candidate) => ({
@@ -1010,6 +1019,7 @@ class CandidateSliderWidget {
 						? candidate.image
 						: this.generateAvatar(candidate.name),
 					colorCode: candidate.party.color_code,
+					electionStats: candidate.electionStats || null,
 				}));
 			} else {
 				throw new Error("Invalid API response");
