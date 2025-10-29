@@ -133,10 +133,12 @@ async function calculateAndUpdateSeats(electionId, constituencyId) {
 			return;
 		}
 
-		// Update statuses
+		// Update status
 		const updates = candidatesInConstituency.map((c) => {
 			const status =
-				c._id.toString() === winningCandidate._id.toString() ? "Winning" : "Trailing";
+				c._id.toString() === winningCandidate._id.toString()
+					? "Winning"
+					: "Trailing";
 
 			return CandidateElectionModel.findByIdAndUpdate(
 				c._id,

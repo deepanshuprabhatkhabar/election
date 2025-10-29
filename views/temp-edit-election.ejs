@@ -262,7 +262,7 @@ thead{
 												candidateElectionDetails.forEach((candidate,
 												index)=> { %>
 												<tr
-													id="candidate-row-<%= index %>">
+													id="candidate-row-<%= candidate.candidate._id %>">
 													<td
 														class="px-6 py-4">
 														<%= candidate.candidate.name
@@ -289,8 +289,9 @@ thead{
 													<td
 														class="px-6 py-4">
 														<input type="number"
-															name="candidates[<%= index %>][votes]"
+															name="candidates[<%= candidate.candidate._id %>][votes]"
 															value="<%= candidate.candidate.votesReceived %>"
+															autocomplete="off"
 															class="block rounded-md w-20 shadow-sm p-1 px-2"
 															<%=candidate.constituencyStatus==='ongoing'
 															? ''
@@ -474,7 +475,7 @@ thead{
 											%> <% partyElectionDetails.forEach((party,
 												index)=> { %>
 												<tr
-													id="party-row-<%= index %>">
+													id="party-row-<%= party._id %>">
 													<td
 														class="px-6 py-4">
 														<%= party.party.party
@@ -484,8 +485,9 @@ thead{
 													<td
 														class="px-6 py-4">
 														<input type="number"
-															name="parties[<%= index %>][votes]"
+															name="parties[<%= party._id %>][votes]"
 															value="<%= party.seatsWon || 0 %>"
+															autocomplete="off"
 															class="block rounded-md w-20 shadow-sm p-1 px-2" />
 													</td>
 													<td
@@ -584,7 +586,7 @@ thead{
 														index)=>
 														{ %>
 														<tr
-															id="constituency-row-<%= index %>">
+															id="constituency-row-<%= constituency._id %>">
 															<td
 																class="px-6 py-4">
 																<%= constituency.constituency.name
@@ -1224,15 +1226,17 @@ thead{
 
 			function updateCandidateVotes(candidateId) {
 				// Find the row containing this candidate
-				const rowElement = document.querySelector(`tr:has(button[onclick*="${candidateId}"])`);
+				const rowElement = document.getElementById(`candidate-row-${candidateId}`);
 				if (!rowElement) {
 					alert('Candidate not found in the table.');
 					return;
 				}
 
 				// Get the candidate votes and status from the row
-				const votesInput = rowElement.querySelector('input[name^="candidates"][name$="[votes]"]');
-
+				const votesInput = rowElement.querySelector(
+				  `input[name="candidates[${candidateId}][votes]"]`
+				);
+				console.log('this is votes input', votesInput)
 				const votes = votesInput ? parseInt(votesInput.value, 10) : 0;
 
 				// Get election ID from the hidden field
@@ -1314,14 +1318,16 @@ thead{
 
 			function updatePartyVotes(partyId) {
 				// Find the row containing this party
-				const rowElement = document.querySelector(`tr[id^="party-row-"]:has(button[onclick*="${partyId}"])`);
+				const rowElement = document.getElementById(`party-row-${partyId}`);
 				if (!rowElement) {
 					alert('Party not found in the table.');
 					return;
 				}
 				// Get the party name and votes from the row
 				const partyNameInput = rowElement.querySelector('input[name^="parties"][name$="[party]"]');
-				const votesInput = rowElement.querySelector('input[name^="parties"][name$="[votes]"]');
+				  const votesInput = rowElement.querySelector(
+				    `input[name="parties[${partyId}][votes]"]`
+				  );
 
 				const partyName = partyNameInput ? partyNameInput.value : '';
 				const votes = votesInput ? parseInt(votesInput.value, 10) : 0;
