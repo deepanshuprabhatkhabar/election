@@ -662,7 +662,7 @@ class CandidateSliderWidget {
 			  .election-hot-candidate-v1-candidate-card.current-candidate,
 			  .election-hot-candidate-v1-candidate-card.next-candidate,
 			  .election-hot-candidate-v1-candidate-card.prev-candidate {
-			    flex: 0 0 130px;
+			    flex: 0 0 170px;
 			    transform: none !important;
 			    opacity: 1 !important;
 			  }
@@ -717,9 +717,9 @@ class CandidateSliderWidget {
 			    .election-hot-candidate-v1-candidate-card.current-candidate,
 			    .election-hot-candidate-v1-candidate-card.next-candidate,
 			    .election-hot-candidate-v1-candidate-card.prev-candidate {
-			      flex: 0 0 130px;
-			      min-width: 130px;
-			      max-width: 130px;
+			      flex: 0 0 170px;
+			      min-width: 170px;
+			      max-width: 170px;
 			      min-height: 160px;
 			      max-height: 200px;
 			    }
