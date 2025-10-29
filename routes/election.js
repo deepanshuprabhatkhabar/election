@@ -13,7 +13,6 @@ const AllianceModel = require("../models/alliance.model");
 const mongoose = require("mongoose");
 
 const redis = RedisManager.getInstance();
-
 // Helper function to recalculate all seats for an election
 async function recalculateAllSeatsForElection(electionId) {
 	try {
@@ -781,15 +780,8 @@ router.put("/temp-election/candidate/update", async (req, res) => {
 			console.log("Election is not ongoing, skipping seat calculation");
 		}
 
-		const { state, year, type } = redisKeys;
-
 		// clear the election widgets cached result from redis
-		redis.delete(`widget_election_widget`);
-		redis.delete(`widget_bihar_election_map_${state}_${year}_${type}`);
-		redis.delete(`widget_cn_election_constituencies_${state}_${year}_${type}`);
-		redis.deleteByPattern(
-			`widget_cn_election_candidates_*_${state}_${year}_${type}`,
-		);
+		await redis.clearAllKeys();
 
 		return res.status(200).json(updatedDocument);
 	} catch (error) {
@@ -819,12 +811,7 @@ router.put("/temp-election/party/update", async (req, res) => {
 		const { state, year, type } = redisKeys;
 
 		// clear the election widgets cached result from redis
-		redis.delete(`widget_election_widget`);
-		redis.delete(`widget_bihar_election_map_${state}_${year}_${type}`);
-		redis.delete(`widget_cn_election_constituencies_${state}_${year}_${type}`);
-		redis.deleteByPattern(
-			`widget_cn_election_candidates_*_${state}_${year}_${type}`,
-		);
+		await redis.clearAllKeys();
 
 		return res.status(200).json(updatedDocument);
 	} catch (error) {
