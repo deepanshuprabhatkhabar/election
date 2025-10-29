@@ -738,17 +738,8 @@ router.delete(
 				{ new: true },
 			);
 
-			const { state, year, type } = redisKeys;
-
 			// clear the election widgets cached result from redis
-			redis.delete(`widget_election_widget`);
-			redis.delete(`widget_bihar_election_map_${state}_${year}_${type}`);
-			redis.delete(
-				`widget_cn_election_constituencies_${state}_${year}_${type}`,
-			);
-			redis.deleteByPattern(
-				`widget_cn_election_candidates_*_${state}_${year}_${type}`,
-			);
+			await redis.clearAllKeys();
 
 			return res.status(200).send({ success: true });
 		} catch (error) {
