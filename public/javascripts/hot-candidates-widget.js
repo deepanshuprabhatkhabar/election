@@ -504,12 +504,8 @@ class CandidateSliderWidget {
                 @media (max-width: 768px) {
 		  .election-hot-candidate-v1-next-btn {
 				right: 0px;
-				top: 50%;
-				transform: translate(-50%);
 		  .election-hot-candidate-v1-prev-btn {
-				left: 23px;
-				top: 50%;
-				transform: translate(-50%);
+				left: 0px;
                   }
                   #candidate-slider-widget{
                     width: 100vw;
