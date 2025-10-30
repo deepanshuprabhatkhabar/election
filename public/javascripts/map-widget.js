@@ -3152,7 +3152,7 @@ class MapWidget {
     
     if (!hasData) {
       popoverContent = `
-                <div class="popover-container">
+                <div class="popover-container-map-widget">
                     <div class="card">
                         <div class="constituency-header">
                             ${constituency} (BIHAR)
@@ -3168,7 +3168,7 @@ class MapWidget {
             `;
     } else {
       popoverContent = `
-                <div class="popover-container">
+                <div class="popover-container-map-widget">
                     <div class="card">
                         <div class="constituency-header">
                             ${constituency} (BIHAR)
