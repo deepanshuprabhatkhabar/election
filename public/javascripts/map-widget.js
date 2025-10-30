@@ -3085,13 +3085,13 @@ class MapWidget {
             path.setAttribute("data-partyName", candidate.partyName || "N/A");
             path.setAttribute(
               "data-partyLogo",
-              candidate?.party?.party_logo || ""
+              candidate?.partyLogo || ""
             );
 
             if (trailingCandidate) {
               path.setAttribute(
                 "data-trail-partyLogo",
-                trailingCandidate?.party?.party_logo || ""
+                trailingCandidate?.partyLogo || ""
               );
               path.setAttribute(
                 "data-trail-candidate",

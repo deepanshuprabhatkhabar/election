@@ -1570,6 +1570,7 @@ router.get("/elections/map/top-candidates", async (req, res) => {
 							votesReceived: "$votesReceived",
 							status: "$status",
 							partyColor: "$party.color_code",
+							partyLogo: "$party.party_logo",
 						},
 					},
 				},
