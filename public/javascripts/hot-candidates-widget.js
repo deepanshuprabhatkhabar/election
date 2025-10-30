@@ -707,10 +707,6 @@ class CandidateSliderWidget {
 			    .election-hot-candidate-v1-candidate-card.next-candidate,
 			    .election-hot-candidate-v1-candidate-card.prev-candidate {
 			      flex: 0 0 160px;
-			      min-width: 120px;
-			      max-width: 120px;
-			      min-height: 200px;
-			      max-height: 240px;
 			    }
 			    .election-hot-candidate-v1-candidate-card img { width: 80px; height: 80px; min-width: 80px; min-height: 80px; }
 			    .election-hot-candidate-v1-candidate-card h3 { font-size: 16px !important; }
@@ -724,7 +720,7 @@ class CandidateSliderWidget {
 			    .election-hot-candidate-v1-candidate-card.current-candidate,
 			    .election-hot-candidate-v1-candidate-card.next-candidate,
 			    .election-hot-candidate-v1-candidate-card.prev-candidate {
-			      flex: 0 0 120px;
+			      flex: 0 0 130px;
 			    }
 			    .election-hot-candidate-v1-candidate-card img { width: 64px; height: 64px; min-width: 64px; min-height: 64px; }
 			    .election-hot-candidate-v1-candidate-card h3 { font-size: 14px !important; }
