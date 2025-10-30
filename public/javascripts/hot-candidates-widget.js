@@ -291,11 +291,11 @@ class CandidateSliderWidget {
                 // }
 
                 .election-hot-candidate-v1-prev-btn {
-                  left: 10px;
+                  left: 0px;
                 }
 
                 .election-hot-candidate-v1-next-btn {
-                  right: 10px;
+                  right: 0px;
                 }
 
                 .election-hot-candidate-v1-slider-content {
