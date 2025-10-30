@@ -3269,7 +3269,7 @@ generateLinkFromConstituencyName(constituencyName) {
   
 
   initializeMapInteractions() {
-    const paths = document.querySelectorAll("path");
+    const paths = document.querySelectorAll("path[data-id^='cns-']");
     if (paths) {
       paths.forEach((path) => {
         path.addEventListener("mouseenter", (e) => {
