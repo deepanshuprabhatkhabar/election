@@ -334,6 +334,13 @@ thead{
 									</tbody>
 								</table>
 							</div>
+					<div class="flex justify-end mb-6">
+						<button type="button" id="updateAllCandidatesVotes"
+							onclick="updateAllCandidateVotes()"
+							class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+							<i class="fas fa-sync-alt mr-2"></i>Update All Candidates
+						</button>
+					</div>
 						</div>
 
 				<!-- Main State Info -->
@@ -1273,6 +1280,63 @@ thead{
 						window.location.reload()
 					});
 			}
+
+
+					function updateAllCandidateVotes() {
+						const electionId = document.querySelector('input[name="_id"]').value;
+						const candidateRows = document.querySelectorAll('[id^="candidate-row-"]');
+
+						const candidates = [];
+
+						candidateRows.forEach(row => {
+							// Extract candidate ID from row ID
+							const candidateId = row.id.replace('candidate-row-', '');
+
+							// Find input for votes
+							const votesInput = row.querySelector(
+								`input[name="candidates[${candidateId}][votes]"]`
+							);
+
+							const votes = votesInput ? parseInt(votesInput.value, 10) : 0;
+
+							candidates.push({
+								candidate: candidateId,
+								votesReceived: votes
+							});
+						});
+
+						if (candidates.length === 0) {
+							alert('No candidates found to update.');
+							return;
+						}
+
+
+						const updateData = {
+							election: electionId,
+							candidates,
+							redisKeys: { state: electionState, year: electionYear, type: electionType },
+						};
+                                                fetch('/api/elections/temp-election/candidates/update-all', {
+						method: 'PUT',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify(updateData),
+						})
+						.then(response => {
+							if (!response.ok) {
+								throw new Error('Failed to update all candidate data');
+							}
+							return response.json();
+						})
+						.then(data => {
+							alert('All candidate data updated successfully!');
+							console.log('Updated documents:', data);
+						})
+						.catch(error => {
+							console.error(error);
+							alert('Failed to update candidate data. Please try again.');
+						});
+
+					}
 
 			// Function to edit party details
 			function editParty(partyId) {

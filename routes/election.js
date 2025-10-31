@@ -790,6 +790,67 @@ router.put("/temp-election/candidate/update", async (req, res) => {
 	}
 });
 
+router.put("/temp-election/candidates/update-all", async (req, res) => {
+	try {
+		console.log(req.body);
+
+		const { election, candidates, redisKeys } = req.body;
+		// candidates: [{ candidate: candidateId, votesReceived: 123 }, ...]
+
+		if (!Array.isArray(candidates) || candidates.length === 0) {
+			return res.status(400).json({ message: "No candidates provided" });
+		}
+
+		// Prepare bulk operations
+		const bulkOps = candidates.map(({ candidate, votesReceived }) => ({
+			updateOne: {
+				filter: { election, candidate },
+				update: { $set: { votesReceived } },
+			},
+		}));
+
+		// Execute all updates in one go
+		const result = await CandidateElectionModel.bulkWrite(bulkOps);
+
+		console.log("Bulk update result:", result);
+
+		// Fetch updated documents
+		const updatedDocuments = await CandidateElectionModel.find({
+			election,
+			candidate: { $in: candidates.map((c) => c.candidate) },
+		});
+
+		// Check if election is ongoing
+		const electionData = await TempElection.findById(election);
+		console.log(
+			`Election status: ${electionData?.status}, Election ID: ${election}`,
+		);
+
+		if (electionData && electionData.status === "ongoing") {
+			console.log("Election is ongoing, calculating seats...");
+
+			// Extract distinct constituencies for updated candidates
+			const constituencies = [
+				...new Set(updatedDocuments.map((doc) => doc.constituency.toString())),
+			];
+
+			for (const constituency of constituencies) {
+				await calculateAndUpdateSeats(election, constituency);
+			}
+		} else {
+			console.log("Election is not ongoing, skipping seat calculation");
+		}
+
+		// Clear election widgets cache
+		await redis.clearAllKeys();
+
+		return res.status(200).json(updatedDocuments);
+	} catch (error) {
+		console.error(error);
+		return res.status(500).json({ error: error.message });
+	}
+});
+
 router.put("/temp-election/party/update", async (req, res) => {
 	try {
 		const { election, party, seatsWon, redisKeys } = req.body;
