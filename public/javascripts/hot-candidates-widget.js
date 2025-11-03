@@ -4,29 +4,28 @@ class CandidateSliderWidget {
 		this.candidates = [];
 		this.currentPosition = 0;
 		this.autoSlideInterval = null;
+		this.autoSlideRestartTimeoutId = null;
+		this.isSliding = false;
+		this.eventHandlersBound = false;
 		this.cardWidth = 0;
 		this.totalWidth = 0;
 		this.isLoading = true;
 		this.currentYear = "";
 		this.state = "Bihar";
-		this.cardsPerSlide = 3; // Default, will be set dynamically
+		this.cardsPerSlide = 1; // Show only one candidate at a time
 		this.init();
 	}
 
 	setCardsPerSlide() {
-		if (window.innerWidth <= 768) {
-			this.cardsPerSlide = 2;
-		} else {
-			this.cardsPerSlide = 3;
-		}
+		// Simple responsive rule: 2 on mobile, 3 otherwise
+		const isMobileViewport = window.matchMedia("(max-width: 768px)").matches;
+		this.cardsPerSlide = isMobileViewport ? 2 : 3;
 	}
 
 	async init() {
 		this.setCardsPerSlide();
 		this.createStyles();
 		this.injectHTML();
-		this.createYearTabs();
-		this.addYearTabStyles();
 		await this.fetchCandidates();
 	}
 
@@ -36,7 +35,6 @@ class CandidateSliderWidget {
 
 		sliderContainer.innerHTML = `
             <div class="election-hot-candidate-v1-slider-title">प्रमुख उम्मीदवार (Bihar Elections)</div>
-            <div id="election-hot-candidate-v1-yearTabs"></div>
             <div class="election-hot-candidate-v1-slider-wrapper">
               <button class="election-hot-candidate-v1-prev-btn">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -105,11 +103,11 @@ class CandidateSliderWidget {
 		return `data:image/svg+xml;base64,${btoa(svg)}`;
 	}
 
-	async fetchCandidates(electionYear = "2020") {
+	async fetchCandidates(electionYear = "2025") {
 		try {
-			this.showLoading();
+			this.showLoadingInSlider();
 			const response = await fetch(
-				`https://election.prabhatkhabar.com/election/hot-candidates?state=${this.state}&year=${electionYear}`,
+				`https://election-stage.prabhatkhabar.com/election/hot-candidates?state=${this.state}&year=${electionYear}`,
 			);
 			const data = await response.json();
 
@@ -122,6 +120,7 @@ class CandidateSliderWidget {
 						? candidate.image
 						: this.generateAvatar(candidate.name),
 					colorCode: candidate.party.color_code,
+					electionStats: candidate.electionStats,
 				}));
 			} else {
 				throw new Error("Invalid API response");
@@ -243,36 +242,10 @@ class CandidateSliderWidget {
 	createStyles() {
 		const style = document.createElement("style");
 		style.textContent = `
-                * {
-                  margin: 0;
-                  padding: 0;
-                  box-sizing: border-box;
-                }
-
-                html, body {
-                  box-sizing: border-box;
-                }
-
-                body {
-                  font-family: Arial, sans-serif;
-                  background-color: #f4f4f4;
-                  display: flex;
-                  justify-content: center;
-                  align-items: center;
-                  min-height: 100vh;
-                  min-width: 100vw;
-                  max-width: 100vw;
-                  max-height: 100vh;
-                  padding: 0;
-                  margin: 0;
-                  overflow-x: hidden !important;
-                  overflow-y: hidden !important;
-                  box-sizing: border-box;
-                }
 
                 .election-hot-candidate-v1-slider-container {
                   width: 100%;
-                  max-width: 1200px;
+                  max-width: 672px;
                   display: flex;
                   flex-direction: column;
                   align-items: center;
@@ -311,47 +284,70 @@ class CandidateSliderWidget {
                   transition: all 0.3s ease;
                 }
 
-                .election-hot-candidate-v1-prev-btn:hover,
-                .election-hot-candidate-v1-next-btn:hover {
-                  background-color: rgba(255, 255, 255, 1);
-                  transform: translateY(-50%) scale(1.1);
-                }
+                // .election-hot-candidate-v1-prev-btn:hover,
+                // .election-hot-candidate-v1-next-btn:hover {
+                //   background-color: rgba(255, 255, 255, 1);
+                //   transform: translateY(-50%) scale(1.1);
+                // }
 
                 .election-hot-candidate-v1-prev-btn {
-                  left: 10px;
+                  left: 0px;
                 }
 
                 .election-hot-candidate-v1-next-btn {
-                  right: 10px;
+                  right: 0px;
                 }
 
                 .election-hot-candidate-v1-slider-content {
                   display: flex;
                   align-items: center;
-                  gap: 20px;
+                  justify-content: center;
                   transition: transform 0.7s cubic-bezier(0.77,0,0.175,1);
                   padding: 0 60px;
-                  min-height: 260px;
+                  gap: 20px;
                 }
 
                 .election-hot-candidate-v1-candidate-card {
-                  flex: 0 0 220px;
-                  min-width: 220px;
-                  max-width: 220px;
-                  min-height: 260px;
-                  max-height: 320px;
                   background-color: white;
                   border-radius: 15px;
                   padding: 20px;
                   text-align: center;
                   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-                  transition: transform 0.3s ease;
+                  transition: all 0.3s ease;
                   position: relative;
                   overflow: hidden;
                   display: flex;
                   flex-direction: column;
                   align-items: center;
                   justify-content: flex-start;
+                }
+
+                .election-hot-candidate-v1-candidate-card.current-candidate {
+                  flex: 0 0 170px;
+                }
+
+                .election-hot-candidate-v1-candidate-card.next-candidate {
+                  flex: 0 0 140px;
+                  min-width: 200px;
+                  max-width: 200px;
+                  min-height: 240px;
+                  max-height: 280px;
+                  z-index: 1;
+                  transform: scale(0.8);
+                  // filter: blur(2px);
+                  opacity: 0.7;
+                }
+
+                .election-hot-candidate-v1-candidate-card.prev-candidate {
+                  flex: 0 0 140px;
+                  min-width: 200px;
+                  max-width: 200px;
+                  min-height: 240px;
+                  max-height: 280px;
+                  z-index: 1;
+                  transform: scale(0.8);
+                  // filter: blur(2px);
+                  opacity: 0.7;
                 }
 
                 .election-hot-candidate-v1-candidate-card::before {
@@ -364,24 +360,37 @@ class CandidateSliderWidget {
                   background: var(--party-color, #ccc);
                 }
 
-                .election-hot-candidate-v1-candidate-card:hover {
-                  transform: scale(1.05);
-                  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
-                }
+                // .election-hot-candidate-v1-candidate-card:hover {
+                //   transform: scale(1.05);
+                //   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+                // }
 
                 .election-hot-candidate-v1-candidate-card img {
-                  width: 140px;
-                  height: 140px;
-                  min-width: 140px;
-                  min-height: 140px;
-                  max-width: 140px;
-                  max-height: 140px;
                   border-radius: 50%;
                   object-fit: cover;
-                  margin-bottom: 15px;
+                  margin-bottom: 8px;
                   border: 3px solid #f0f0f0;
                   transition: border-color 0.3s ease;
                   background: #f8f8f8;
+                }
+
+                .election-hot-candidate-v1-candidate-card.current-candidate img {
+                  width: 100px;
+                  height: 100px;
+                }
+
+                .election-hot-candidate-v1-candidate-card.next-candidate img {
+                  width: 120px;
+                  height: 120px;
+                  min-width: 120px;
+                  min-height: 120px;
+                  max-width: 120px;
+                  max-height: 120px;
+                }
+
+                .election-hot-candidate-v1-candidate-card.prev-candidate img {
+                  width: 120px;
+                  height: 120px;
                 }
 
                 .election-hot-candidate-v1-candidate-card:hover img {
@@ -389,7 +398,6 @@ class CandidateSliderWidget {
                 }
 
                 .election-hot-candidate-v1-candidate-card h3 {
-                  font-size: 18px;
                   margin-bottom: 10px;
                   color: #333;
                   font-weight: 600;
@@ -399,21 +407,46 @@ class CandidateSliderWidget {
                   width: 100%;
                 }
 
+                .election-hot-candidate-v1-candidate-card.current-candidate h3 {
+                  font-size: 22px;
+                }
+
+                .election-hot-candidate-v1-candidate-card.next-candidate h3 {
+                  font-size: 16px;
+                }
+
+                .election-hot-candidate-v1-candidate-card.prev-candidate h3 {
+                  font-size: 16px;
+                }
+
                 .election-hot-candidate-v1-party-badge {
                   display: inline-block;
                   padding: 6px 12px;
                   border-radius: 20px;
                   font-weight: bold;
-                  font-size: 0.8rem;
                   margin-bottom: 10px;
                   color: white;
                   background: var(--party-color, #666);
                   min-width: 60px;
                 }
 
+                .election-hot-candidate-v1-candidate-card.current-candidate .election-hot-candidate-v1-party-badge {
+                  font-size: 0.9rem;
+                  padding: 8px 16px;
+                }
+
+                .election-hot-candidate-v1-candidate-card.next-candidate .election-hot-candidate-v1-party-badge {
+                  font-size: 0.7rem;
+                  padding: 4px 8px;
+                }
+
+                .election-hot-candidate-v1-candidate-card.prev-candidate .election-hot-candidate-v1-party-badge {
+                  font-size: 0.7rem;
+                  padding: 4px 8px;
+                }
+
                 .election-hot-candidate-v1-candidate-location {
                   color: #666;
-                  font-size: 14px;
                   font-weight: 500;
                   white-space: nowrap;
                   overflow: hidden;
@@ -421,94 +454,123 @@ class CandidateSliderWidget {
                   width: 100%;
                 }
 
+                .election-hot-candidate-v1-candidate-card.current-candidate .election-hot-candidate-v1-candidate-location {
+                  font-size: 16px;
+                }
+
+                .election-hot-candidate-v1-candidate-card.next-candidate .election-hot-candidate-v1-candidate-location {
+                  font-size: 12px;
+                }
+
+                .election-hot-candidate-v1-candidate-card.prev-candidate .election-hot-candidate-v1-candidate-location {
+                  font-size: 12px;
+                }
+
                 /* Tablet styles */
                 @media (max-width: 1024px) {
                   .election-hot-candidate-v1-slider-container {
                     max-width: 900px;
                   }
-                  .election-hot-candidate-v1-candidate-card {
+                  .election-hot-candidate-v1-candidate-card.current-candidate {
                     flex: 0 0 180px;
-                    min-width: 180px;
-                    max-width: 180px;
-                    min-height: 220px;
-                    max-height: 260px;
                   }
-                  .election-hot-candidate-v1-candidate-card img {
-                    width: 110px;
-                    height: 110px;
-                    min-width: 110px;
-                    min-height: 110px;
-                    max-width: 110px;
-                    max-height: 110px;
+                  .election-hot-candidate-v1-candidate-card.next-candidate {
+                    flex: 0 0 160px;
+                    min-width: 160px;
+                    max-width: 160px;
+                  }
+                  .election-hot-candidate-v1-candidate-card.current-candidate img {
+                    width: 100px;
+                    height: 100px;
+                  }
+                  .election-hot-candidate-v1-candidate-card.next-candidate img {
+                    width: 100px;
+                    height: 100px;
+                    min-width: 100px;
+                    min-height: 100px;
+                    max-width: 100px;
+                    max-height: 100px;
                   }
                   .election-hot-candidate-v1-slider-title {
                     font-size: 22px;
                   }
                   .election-hot-candidate-v1-slider-content {
                     padding: 0 30px;
+                    gap: 30px;
                   }
                 }
 
                 /* Mobile styles */
                 @media (max-width: 768px) {
-                  html, body {
-                    overflow: hidden !important;
-                    width: 100vw !important;
-                    height: 100vh !important;
-                    margin: 0 !important;
-                    padding: 0 !important;
-                    position: fixed !important;
-                    overscroll-behavior: none !important;
-                  }
-                  body {
-                    padding: 10px;
-                    overflow-x: hidden;
-                    overflow-y: hidden;
-                    width: 100vw;
-                    height: 100vh;
-                    box-sizing: border-box;
+		  .election-hot-candidate-v1-next-btn {
+				right: 0px;
+		  .election-hot-candidate-v1-prev-btn {
+				left: 0px;
                   }
                   #candidate-slider-widget{
                     width: 100vw;
                     min-width: 0;
                   }
                   .election-hot-candidate-v1-slider-container {
-                    width: 100vw;
                     min-width: 0;
+		    display: flex;
+		    justify-content: center;
                   }
                   .election-hot-candidate-v1-slider-wrapper {
-                    width: 100vw;
                     min-width: 0;
                   }
                   .election-hot-candidate-v1-slider-content {
                     padding: 0 10px;
-                    gap: 0;
+                    gap: 20px;
+                    min-height: 300px;
                   }
-                  .election-hot-candidate-v1-candidate-card {
-                    flex: 0 0 50%;
-                    min-width: 50%;
-                    max-width: 50%;
-                    min-height: 420px;
-                    max-height: 480px;
+                  .election-hot-candidate-v1-candidate-card.current-candidate {
+                    flex: 0 0 150px;
+                    padding: 15px;
+                  }
+                  .election-hot-candidate-v1-candidate-card.next-candidate {
+                    flex: 0 0 140px;
+                    min-width: 140px;
+                    max-width: 140px;
+                    min-height: 180px;
+                    max-height: 220px;
                     padding: 10px;
                   }
-                  .election-hot-candidate-v1-candidate-card img {
-                    width: 80px;
-                    height: 80px;
-                    min-width: 80px;
-                    min-height: 80px;
-                    max-width: 80px;
-                    max-height: 80px;
+                  .election-hot-candidate-v1-candidate-card.current-candidate img {
+                    width: 100px;
+                    height: 100px;
+                    min-width: 100px;
+                    min-height: 100px;
+                    max-width: 100px;
+                    max-height: 100px;
                   }
-                  .election-hot-candidate-v1-candidate-card h3 {
-                    font-size: 15px;
+                  .election-hot-candidate-v1-candidate-card.next-candidate img {
+                    width: 70px;
+                    height: 70px;
+                    min-width: 70px;
+                    min-height: 70px;
+                    max-width: 70px;
+                    max-height: 70px;
                   }
-                  .election-hot-candidate-v1-party-badge {
-                    font-size: 0.7rem;
-                    padding: 4px 8px;
+                  .election-hot-candidate-v1-candidate-card.current-candidate h3 {
+                    font-size: 18px;
                   }
-                  .election-hot-candidate-v1-candidate-location {
-                    font-size: 12px;
+                  .election-hot-candidate-v1-candidate-card.next-candidate h3 {
+                    font-size: 14px;
+                  }
+                  .election-hot-candidate-v1-candidate-card.current-candidate .election-hot-candidate-v1-party-badge {
+                    font-size: 0.8rem;
+                    padding: 6px 12px;
+                  }
+                  .election-hot-candidate-v1-candidate-card.next-candidate .election-hot-candidate-v1-party-badge {
+                    font-size: 0.6rem;
+                    padding: 3px 6px;
+                  }
+                  .election-hot-candidate-v1-candidate-card.current-candidate .election-hot-candidate-v1-candidate-location {
+                    font-size: 14px;
+                  }
+                  .election-hot-candidate-v1-candidate-card.next-candidate .election-hot-candidate-v1-candidate-location {
+                    font-size: 11px;
                   }
                   .election-hot-candidate-v1-slider-title {
                     font-size: 18px;
@@ -528,52 +590,54 @@ class CandidateSliderWidget {
 
                 /* Small mobile styles */
                 @media (max-width: 480px) {
-                  html, body {
-                    overflow: hidden !important;
-                    width: 100vw !important;
-                    height: 100vh !important;
-                    margin: 0 !important;
-                    padding: 0 !important;
-                    position: fixed !important;
-                    overscroll-behavior: none !important;
-                  }
-                  body {
-                    padding: 4px;
-                    overflow-x: hidden;
-                    overflow-y: hidden;
-                    width: 100vw;
-                    height: 100vh;
-                    box-sizing: border-box;
-                  }
                   .election-hot-candidate-v1-slider-content {
                     padding: 0 2px;
-                    gap: 6px;
+                    gap: 15px;
+                    min-height: 250px;
                   }
-                  .election-hot-candidate-v1-candidate-card {
-                    flex: 0 0 110px;
-                    min-width: 110px;
-                    max-width: 110px;
+                  .election-hot-candidate-v1-candidate-card.next-candidate {
+                    flex: 0 0 100px;
+                    min-width: 100px;
+                    max-width: 100px;
                     min-height: 140px;
-                    max-height: 170px;
-                    padding: 6px;
+                    max-height: 180px;
+                    padding: 8px;
                   }
-                  .election-hot-candidate-v1-candidate-card img {
-                    width: 55px;
-                    height: 55px;
-                    min-width: 55px;
-                    min-height: 55px;
-                    max-width: 55px;
-                    max-height: 55px;
+                  .election-hot-candidate-v1-candidate-card.current-candidate img {
+                    width: 80px;
+                    height: 80px;
+                    min-width: 80px;
+                    min-height: 80px;
+                    max-width: 80px;
+                    max-height: 80px;
                   }
-                  .election-hot-candidate-v1-candidate-card h3 {
+                  .election-hot-candidate-v1-candidate-card.next-candidate img {
+                    width: 50px;
+                    height: 50px;
+                    min-width: 50px;
+                    min-height: 50px;
+                    max-width: 50px;
+                    max-height: 50px;
+                  }
+                  .election-hot-candidate-v1-candidate-card.current-candidate h3 {
+                    font-size: 16px;
+                  }
+                  .election-hot-candidate-v1-candidate-card.next-candidate h3 {
                     font-size: 12px;
                   }
-                  .election-hot-candidate-v1-party-badge {
-                    font-size: 0.6rem;
-                    padding: 2px 5px;
+                  .election-hot-candidate-v1-candidate-card.current-candidate .election-hot-candidate-v1-party-badge {
+                    font-size: 0.7rem;
+                    padding: 4px 8px;
                   }
-                  .election-hot-candidate-v1-candidate-location {
-                    font-size: 10px;
+                  .election-hot-candidate-v1-candidate-card.next-candidate .election-hot-candidate-v1-party-badge {
+                    font-size: 0.5rem;
+                    padding: 2px 4px;
+                  }
+                  .election-hot-candidate-v1-candidate-card.current-candidate .election-hot-candidate-v1-candidate-location {
+                    font-size: 12px;
+                  }
+                  .election-hot-candidate-v1-candidate-card.next-candidate .election-hot-candidate-v1-candidate-location {
+                    font-size: 9px;
                   }
                   .election-hot-candidate-v1-slider-title {
                     font-size: 15px;
@@ -591,34 +655,119 @@ class CandidateSliderWidget {
                 }
               `;
 		document.head.appendChild(style);
+
+		// Simple uniform slider overrides (3 cards desktop/tablet, 2 on mobile)
+		const overrideId = "election-hot-candidate-v1-simple-overrides";
+		if (!document.getElementById(overrideId)) {
+			const overrideStyle = document.createElement("style");
+			overrideStyle.id = overrideId;
+			overrideStyle.textContent = `
+			  /* Base: uniform card sizing and no zoom/opacity differences */
+			  .election-hot-candidate-v1-candidate-card,
+			  .election-hot-candidate-v1-candidate-card.current-candidate,
+			  .election-hot-candidate-v1-candidate-card.next-candidate,
+			  .election-hot-candidate-v1-candidate-card.prev-candidate {
+			    flex: 0 0 170px;
+			    transform: none !important;
+			    opacity: 1 !important;
+			  }
+
+			  .election-hot-candidate-v1-candidate-card img {
+			    width: 90px;
+			    height: 90px;
+			    min-width: 90px;
+			    min-height: 90px;
+			    max-width: 90px;
+			    max-height: 90px;
+			  }
+
+			  .election-hot-candidate-v1-candidate-card h3 { font-size: 18px !important; margin: 0px;}
+			  .election-hot-candidate-v1-party-badge { font-size: 0.8rem !important; padding: 6px 12px !important; margin-top: 5px; }
+			  .election-hot-candidate-v1-candidate-location { font-size: 14px !important; }
+
+			  /* Tablet */
+			  @media (max-width: 1024px) {
+			    .election-hot-candidate-v1-candidate-card,
+			    .election-hot-candidate-v1-candidate-card.current-candidate,
+			    .election-hot-candidate-v1-candidate-card.next-candidate,
+			    .election-hot-candidate-v1-candidate-card.prev-candidate {
+			      flex: 0 0 180px;
+			    }
+			    .election-hot-candidate-v1-candidate-card img { width: 90px; height: 90px; }
+			  }
+
+			  /* Mobile (2 cards) */
+			  @media (max-width: 768px) {
+			    .election-hot-candidate-v1-candidate-card,
+			    .election-hot-candidate-v1-candidate-card.current-candidate,
+			    .election-hot-candidate-v1-candidate-card.next-candidate,
+			    .election-hot-candidate-v1-candidate-card.prev-candidate {
+			      flex: 0 0 160px;
+			    }
+			    .election-hot-candidate-v1-candidate-card img { width: 80px; height: 80px; min-width: 80px; min-height: 80px; }
+			    .election-hot-candidate-v1-candidate-card h3 { font-size: 16px !important; }
+			    .election-hot-candidate-v1-party-badge { font-size: 0.75rem !important; padding: 5px 10px !important; }
+			    .election-hot-candidate-v1-candidate-location { font-size: 12px !important; }
+			  }
+
+			  /* Small mobile */
+			  @media (max-width: 480px) {
+			    .election-hot-candidate-v1-candidate-card,
+			    .election-hot-candidate-v1-candidate-card.current-candidate,
+			    .election-hot-candidate-v1-candidate-card.next-candidate,
+			    .election-hot-candidate-v1-candidate-card.prev-candidate {
+			      flex: 0 0 130px;
+			    }
+			    .election-hot-candidate-v1-candidate-card img { width: 64px; height: 64px; min-width: 64px; min-height: 64px; }
+			    .election-hot-candidate-v1-candidate-card h3 { font-size: 14px !important; }
+			    .election-hot-candidate-v1-party-badge { font-size: 0.65rem !important; padding: 4px 8px !important; }
+			    .election-hot-candidate-v1-candidate-location { font-size: 11px !important; }
+			  }
+
+			  /* Slide transition animations */
+			  .ehc-slide-out-next .election-hot-candidate-v1-candidate-card { animation: ehcSlideLeft 0.35s ease both; }
+			  .ehc-slide-out-prev .election-hot-candidate-v1-candidate-card { animation: ehcSlideRight 0.35s ease both; }
+			  .ehc-slide-in-next .election-hot-candidate-v1-candidate-card { animation: ehcEnterFromRight 0.35s ease both; }
+			  .ehc-slide-in-prev .election-hot-candidate-v1-candidate-card { animation: ehcEnterFromLeft 0.35s ease both; }
+
+			  @keyframes ehcSlideLeft { from { transform: translateX(0); opacity: 1; } to { transform: translateX(-120%); opacity: 0; } }
+			  @keyframes ehcSlideRight { from { transform: translateX(0); opacity: 1; } to { transform: translateX(120%); opacity: 0; } }
+			  @keyframes ehcEnterFromRight { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+			  @keyframes ehcEnterFromLeft { from { transform: translateX(-120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+			`;
+			document.head.appendChild(overrideStyle);
+		}
 	}
 
 	updateSliderContent() {
 		// Clear existing content
 		this.sliderContent.innerHTML = "";
 
-		// Reset position
-		this.currentPosition = 0;
-
-		// Clear any existing auto-slide interval
-		if (this.autoSlideInterval) {
-			clearInterval(this.autoSlideInterval);
-			this.autoSlideInterval = null;
+		if (!this.candidates || this.candidates.length === 0) {
+			return;
 		}
 
-		// Create candidate cards
-		this.candidates.forEach((candidate) => {
-			const card = this.createCandidateCard(candidate);
+		// Render a simple window of N cards starting at currentPosition
+		const visibleCount = Math.min(this.cardsPerSlide, this.candidates.length);
+		for (let i = 0; i < visibleCount; i++) {
+			const index = (this.currentPosition + i) % this.candidates.length;
+			const candidate = this.candidates[index];
+			const card = this.createCandidateCard(candidate, false, false, false);
 			this.sliderContent.appendChild(card);
-		});
+		}
 
-		// Setup event listeners
+		// Setup event listeners once
 		this.setupEventListeners();
 	}
 
-	createCandidateCard(candidate) {
+	createCandidateCard(
+		candidate,
+		isCurrent = true,
+		isNext = false,
+		isPrev = false,
+	) {
 		const card = document.createElement("div");
-		card.className = "election-hot-candidate-v1-candidate-card";
+		card.className = `election-hot-candidate-v1-candidate-card ${isCurrent ? "current-candidate" : ""} ${isNext ? "next-candidate" : ""} ${isPrev ? "prev-candidate" : ""}`;
 		card.style.setProperty("--party-color", candidate.colorCode || "#666");
 
 		const img = document.createElement("img");
@@ -644,55 +793,85 @@ class CandidateSliderWidget {
 		card.appendChild(name);
 		card.appendChild(partyBadge);
 		card.appendChild(location);
+		console.log(candidate);
+		if (candidate.electionStats && candidate.electionStats.status) {
+			const status = document.createElement("div");
+			status.className = "election-hot-candidate-v1-candidate-location";
+			status.textContent = candidate.electionStats.status;
+			card.appendChild(status);
+		}
 
 		return card;
 	}
 
 	setupEventListeners() {
+		if (this.eventHandlersBound) return;
+
 		// Set cards per slide on resize
 		window.addEventListener("resize", () => {
 			this.setCardsPerSlide();
-			this.updateCardDimensions();
-			this.currentPosition = 0;
-			this.updateSliderPosition();
 		});
 
-		this.updateCardDimensions();
-
-		// Debounce for navigation buttons
-		let isSliding = false;
-		const slideWithDebounce = (direction) => {
-			if (isSliding) return;
-			isSliding = true;
+		// Debounce for navigation buttons (instance-level guard)
+		this.slideWithDebounce = (direction) => {
+			if (this.isSliding) return;
+			this.isSliding = true;
+			this.stopAutoSlide();
 			this.slide(direction);
 			setTimeout(() => {
-				isSliding = false;
-			}, 700); // prevent rapid clicks
+				this.isSliding = false;
+				this.restartAutoSlideWithDelay();
+			}, 500); // prevent rapid clicks
 		};
 
-		this.nextBtn.addEventListener("click", () => slideWithDebounce("next"));
-		this.prevBtn.addEventListener("click", () => slideWithDebounce("prev"));
+		this.handleNextClick = () => this.slideWithDebounce("next");
+		this.handlePrevClick = () => this.slideWithDebounce("prev");
+		this.nextBtn.addEventListener("click", this.handleNextClick);
+		this.prevBtn.addEventListener("click", this.handlePrevClick);
 
-		// Only setup auto-sliding if we have enough candidates
-		if (this.candidates.length > this.cardsPerSlide) {
-			this.autoSlideInterval = setInterval(
-				() => slideWithDebounce("next"),
-				5000,
-			);
-			// Pause on hover
-			this.sliderWrapper.addEventListener("mouseenter", () => {
-				clearInterval(this.autoSlideInterval);
-			});
-			this.sliderWrapper.addEventListener("mouseleave", () => {
-				this.autoSlideInterval = setInterval(
-					() => slideWithDebounce("next"),
-					5000,
-				);
-			});
-		}
+		// Auto-slide controls
+		this.sliderWrapper.addEventListener("mouseenter", () =>
+			this.stopAutoSlide(),
+		);
+		this.sliderWrapper.addEventListener("mouseleave", () =>
+			this.startAutoSlide(),
+		);
 
 		// Touch support for mobile
-		this.setupTouchEvents(slideWithDebounce);
+		this.setupTouchEvents(this.slideWithDebounce);
+
+		// Start auto-slide initially
+		this.startAutoSlide();
+
+		this.eventHandlersBound = true;
+	}
+
+	startAutoSlide() {
+		if (this.candidates.length <= 1) return;
+		if (this.autoSlideInterval) clearInterval(this.autoSlideInterval);
+		this.autoSlideInterval = setInterval(
+			() => this.slideWithDebounce("next"),
+			5000,
+		);
+	}
+
+	stopAutoSlide() {
+		if (this.autoSlideInterval) {
+			clearInterval(this.autoSlideInterval);
+			this.autoSlideInterval = null;
+		}
+		if (this.autoSlideRestartTimeoutId) {
+			clearTimeout(this.autoSlideRestartTimeoutId);
+			this.autoSlideRestartTimeoutId = null;
+		}
+	}
+
+	restartAutoSlideWithDelay(delayMs = 2000) {
+		this.stopAutoSlide();
+		this.autoSlideRestartTimeoutId = setTimeout(
+			() => this.startAutoSlide(),
+			delayMs,
+		);
 	}
 
 	setupTouchEvents(slideWithDebounce) {
@@ -730,61 +909,40 @@ class CandidateSliderWidget {
 				}
 			}
 			isDragging = false;
-			if (this.candidates.length > this.cardsPerSlide) {
-				this.autoSlideInterval = setInterval(
-					() => slideWithDebounce("next"),
-					5000,
-				);
-			}
+			this.restartAutoSlideWithDelay();
 		});
-	}
-
-	updateCardDimensions() {
-		const cards = Array.from(
-			this.sliderContent.querySelectorAll(
-				".election-hot-candidate-v1-candidate-card",
-			),
-		);
-		if (cards.length > 0) {
-			const cardWidth = cards[0].offsetWidth;
-			const gap =
-				parseInt(window.getComputedStyle(this.sliderContent).gap) || 20;
-			this.cardWidth = cardWidth + gap;
-			this.totalWidth = this.cardWidth * this.candidates.length;
-		}
-	}
-
-	updateSliderPosition() {
-		this.sliderContent.style.transform = `translateX(-${this.currentPosition}px)`;
 	}
 
 	slide(direction) {
 		if (this.candidates.length <= 1) return;
 
-		const slideAmount = this.cardWidth * this.cardsPerSlide;
-		const maxPosition =
-			this.cardWidth * (this.candidates.length - this.cardsPerSlide);
+		const durationMs = 350;
+		const outClass = direction === "next" ? "ehc-slide-out-next" : "ehc-slide-out-prev";
+		const inClass = direction === "next" ? "ehc-slide-in-next" : "ehc-slide-in-prev";
 
-		if (direction === "next") {
-			this.currentPosition += slideAmount;
-			if (this.currentPosition > maxPosition) {
-				this.currentPosition = 0;
-				this.sliderContent.style.transition = "none";
-				this.updateSliderPosition();
-				this.sliderContent.offsetHeight;
-				this.sliderContent.style.transition = "transform 0.5s ease";
+		// Animate current cards out
+		this.sliderContent.classList.remove("ehc-slide-out-next", "ehc-slide-out-prev", "ehc-slide-in-next", "ehc-slide-in-prev");
+		this.sliderContent.classList.add(outClass);
+
+		setTimeout(() => {
+			// Update index after out animation completes
+			if (direction === "next") {
+				this.currentPosition = (this.currentPosition + 1) % this.candidates.length;
+			} else {
+				this.currentPosition = this.currentPosition === 0
+					? this.candidates.length - 1
+					: this.currentPosition - 1;
 			}
-		} else {
-			this.currentPosition -= slideAmount;
-			if (this.currentPosition < 0) {
-				this.currentPosition = maxPosition > 0 ? maxPosition : 0;
-				this.sliderContent.style.transition = "none";
-				this.updateSliderPosition();
-				this.sliderContent.offsetHeight;
-				this.sliderContent.style.transition = "transform 0.5s ease";
-			}
-		}
-		this.updateSliderPosition();
+
+			// Render next set and animate them in
+			this.updateSliderContent();
+			this.sliderContent.classList.remove(outClass);
+			this.sliderContent.classList.add(inClass);
+
+			setTimeout(() => {
+				this.sliderContent.classList.remove(inClass);
+			}, durationMs);
+		}, durationMs);
 	}
 
 	async createYearTabs() {
@@ -793,9 +951,7 @@ class CandidateSliderWidget {
 		);
 
 		try {
-			const result = await fetch(
-				`https://election.prabhatkhabar.com/election/years/Bihar`,
-			);
+			const result = await fetch(`https://election-stage.prabhatkhabar.com/election/years/Bihar`);
 			const allYears = (await result.json()).data.availableYears;
 
 			// Set currentYear as instance property
@@ -804,8 +960,6 @@ class CandidateSliderWidget {
 			const years = [...new Set(allYears.map((item) => item))].sort(
 				(a, b) => b - a,
 			);
-
-			console.log(years);
 
 			years.forEach((year) => {
 				const tab = document.createElement("div");
@@ -858,9 +1012,10 @@ class CandidateSliderWidget {
 	async fetchCandidatesForYear(electionYear) {
 		try {
 			const response = await fetch(
-				`https://election.prabhatkhabar.com/election/hot-candidates?state=${this.state}&year=${electionYear}`,
+				`https://election-stage.prabhatkhabar.com/election/hot-candidates?state=${this.state}&year=${electionYear}`,
 			);
 			const data = await response.json();
+			console.log(data);
 
 			if (data.success && data.data) {
 				this.candidates = data.data.map((candidate) => ({
@@ -871,6 +1026,7 @@ class CandidateSliderWidget {
 						? candidate.image
 						: this.generateAvatar(candidate.name),
 					colorCode: candidate.party.color_code,
+					electionStats: candidate.electionStats || null,
 				}));
 			} else {
 				throw new Error("Invalid API response");

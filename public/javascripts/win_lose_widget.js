@@ -345,7 +345,7 @@ async function fetchElectionData() {
     const stateName = params.get("state") || "Bihar";
     // This would be your actual API endpoint
     const response = await fetch(
-      `https://election.prabhatkhabar.com/elections/state-elections?state=${stateName}`
+      `https://election-stage.prabhatkhabar.com/elections/state-elections?state=${stateName}`
     );
 
     if (!response.ok) {

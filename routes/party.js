@@ -16,13 +16,8 @@ const redis = RedisManager.getInstance(); // Get the Redis instance
 const partySchema = Joi.object({
   party: Joi.string().required(),
   color_code: Joi.string()
-    .pattern(/^#([0-9A-F]{3}){1,2}$/i)
-    .required(), // Hex color code
+    .pattern(/^#([0-9A-F]{3}){1,2}$/i),
   party_logo: Joi.string().optional(), // URL of the party logo,
-  total_votes: Joi.number(),
-  electors: Joi.number(),
-  total_seat: Joi.number(), // Total seats in the assembly
-  votes_percentage: Joi.number().optional().min(0).max(100), // Optional percentage of votes, between 0 and 100
 });
 
 const storage = multer.diskStorage({
@@ -240,10 +235,6 @@ router.post("/", upload.single("party_logo"), async (req, res) => {
     const partyData = {
       party: req.body.party,
       color_code: req.body.color_code,
-      total_seat: req.body.total_seat,
-      total_votes: req.body.total_votes,
-      electors: req.body.electors,
-      votes_percentage: req.body.votes_percentage,
     };
 
     if (req.file) {
