@@ -1,6 +1,6 @@
 function getFullImagePath(req, folderName) {
   return (
-    `https://election-stage.prabhatkhabar.com/uploads/${folderName}/` +
+    `https://election.prabhatkhabar.com/uploads/${folderName}/` +
     req.file.filename
   );
 }

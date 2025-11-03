@@ -274,7 +274,7 @@
 
       try {
         const result = await fetch(
-          `https://election-stage.prabhatkhabar.com/election/years/Bihar`
+          `https://election.prabhatkhabar.com/election/years/Bihar`
         );
         const allYears = (await result.json()).data.availableYears;
 
@@ -324,7 +324,7 @@
         const params = new URLSearchParams(document.location.search);
         const type = params.get("type") || "general";
         const response = await fetch(
-          `https://election-stage.prabhatkhabar.com/api/constituency?state=${this.stateName}&year=${this.currentYear}&type=${type}`
+          `https://election.prabhatkhabar.com/api/constituency?state=${this.stateName}&year=${this.currentYear}&type=${type}`
         );
         if (!response.ok) throw new Error("Failed to fetch constituencies");
         const constituencies = await response.json();
@@ -358,7 +358,7 @@
 
         const type = params.get("type") || "general";
         const response = await fetch(
-          `https://election-stage.prabhatkhabar.com/api/candidate/cn-list?constituencyName=${constituency}&state=${this.stateName}&year=${this.currentYear}&type=${type}`
+          `https://election.prabhatkhabar.com/api/candidate/cn-list?constituencyName=${constituency}&state=${this.stateName}&year=${this.currentYear}&type=${type}`
         );
         if (!response.ok) throw new Error("Failed to fetch candidates");
         const newCandidatesData = await response.json();

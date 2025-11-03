@@ -107,7 +107,7 @@ class CandidateSliderWidget {
 		try {
 			this.showLoadingInSlider();
 			const response = await fetch(
-				`https://election-stage.prabhatkhabar.com/election/hot-candidates?state=${this.state}&year=${electionYear}`,
+				`https://election.prabhatkhabar.com/election/hot-candidates?state=${this.state}&year=${electionYear}`,
 			);
 			const data = await response.json();
 
@@ -951,7 +951,7 @@ class CandidateSliderWidget {
 		);
 
 		try {
-			const result = await fetch(`https://election-stage.prabhatkhabar.com/election/years/Bihar`);
+			const result = await fetch(`https://election.prabhatkhabar.com/election/years/Bihar`);
 			const allYears = (await result.json()).data.availableYears;
 
 			// Set currentYear as instance property
@@ -1012,7 +1012,7 @@ class CandidateSliderWidget {
 	async fetchCandidatesForYear(electionYear) {
 		try {
 			const response = await fetch(
-				`https://election-stage.prabhatkhabar.com/election/hot-candidates?state=${this.state}&year=${electionYear}`,
+				`https://election.prabhatkhabar.com/election/hot-candidates?state=${this.state}&year=${electionYear}`,
 			);
 			const data = await response.json();
 			console.log(data);
