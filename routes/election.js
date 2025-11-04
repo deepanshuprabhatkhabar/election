@@ -181,6 +181,92 @@ async function updateWidgetCaches({ state, year, type, electionId, affectedConst
 				if (type) await redis.set(`widget_cn_election_candidates_${constituencyDoc.name}_${state}_${year}_${type}`, canList);
 			}
 		}
+
+		// 5) Alliance widget: /api/alliance/alliances-data/:electionId -> key: election_data_allianz_team
+		if (electionId && year === '2025') {
+			const alliancesData = await AllianceModel.aggregate([
+				// Match alliances for this election
+				{
+					$match: {
+						election: new mongoose.Types.ObjectId(electionId),
+					},
+				},
+				// Lookup parties in the alliance
+				{
+					$lookup: {
+						from: "parties",
+						localField: "parties",
+						foreignField: "_id",
+						as: "populatedParties",
+					},
+				},
+				// Unwind parties so we can attach individual results
+				{
+					$unwind: "$populatedParties",
+				},
+				// Lookup each party's election result (to get seatsWon)
+				{
+					$lookup: {
+						from: "electionpartyresults",
+						let: {
+							partyId: "$populatedParties._id",
+							electionId: "$election",
+						},
+						pipeline: [
+							{
+								$match: {
+									$expr: {
+										$and: [
+											{ $eq: ["$party", "$$partyId"] },
+											{ $eq: ["$election", "$$electionId"] },
+										],
+									},
+								},
+							},
+							{ $project: { seatsWon: 1, _id: 0 } },
+						],
+						as: "partyResults",
+					},
+				},
+				// Extract seatsWon or default to 0
+				{
+					$addFields: {
+						seatsWon: {
+							$ifNull: [{ $arrayElemAt: ["$partyResults.seatsWon", 0] }, 0],
+						},
+					},
+				},
+				// Group back by alliance, combining parties and summing total seats
+				{
+					$group: {
+						_id: "$_id",
+						name: { $first: "$name" },
+						election: { $first: "$election" },
+						parties: {
+							$push: {
+								$mergeObjects: ["$populatedParties", { seatsWon: "$seatsWon" }],
+							},
+						},
+						allianceSeats: { $sum: "$seatsWon" },
+					},
+				},
+				{
+					$sort: { allianceSeats: -1 },
+				},
+				// Final projection
+				{
+					$project: {
+						_id: 1,
+						name: 1,
+						election: 1,
+						allianceSeats: 1,
+						parties: 1,
+					},
+				},
+			]);
+
+			await redis.set("election_data_allianz_team", alliancesData);
+		}
 	} catch (err) {
 		console.error("Error updating widget caches:", err);
 	}
