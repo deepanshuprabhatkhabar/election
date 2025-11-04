@@ -13,6 +13,178 @@ const AllianceModel = require("../models/alliance.model");
 const mongoose = require("mongoose");
 
 const redis = RedisManager.getInstance();
+const crypto = require("crypto");
+// Helper to recompute and update widget caches
+async function updateWidgetCaches({ state, year, type, electionId, affectedConstituencyId }) {
+	try {
+		// 1) Result widget: /elections/state-elections -> key: widget_election_widget
+		console.log('Params being passed here', state, year, type, electionId)
+		const stateElections = await TempElection.aggregate([
+			{ $match: { state } },
+			{ $sort: { year: 1 } },
+			{
+				$lookup: {
+					from: "electionpartyresults",
+					localField: "_id",
+					foreignField: "election",
+					as: "partyResults",
+				},
+			},
+			{ $unwind: { path: "$partyResults", preserveNullAndEmptyArrays: true } },
+			{
+				$lookup: {
+					from: "parties",
+					localField: "partyResults.party",
+					foreignField: "_id",
+					as: "partyResults.partyDetails",
+				},
+			},
+			{ $unwind: { path: "$partyResults.partyDetails", preserveNullAndEmptyArrays: true } },
+			{
+				$group: {
+					_id: "$_id",
+					year: { $first: "$year" },
+					state: { $first: "$state" },
+					electionType: { $first: "$electionType" },
+					totalSeats: { $first: "$totalSeats" },
+					halfWayMark: { $first: "$halfWayMark" },
+					status: { $first: "$status" },
+					parties: {
+						$push: {
+							$cond: [
+								{ $ne: ["$partyResults", {}] },
+								{
+									party: {
+										party: "$partyResults.partyDetails.party",
+										color_code: "$partyResults.partyDetails.color_code",
+										party_logo: "$partyResults.partyDetails.party_logo",
+									},
+									seatsWon: "$partyResults.seatsWon",
+								},
+								null,
+							],
+						},
+					},
+				},
+			},
+			{
+				$addFields: {
+					parties: {
+						$filter: { input: "$parties", as: "party", cond: { $ne: ["$$party", null] } },
+					},
+				},
+			},
+			{ $addFields: { parties: { $sortArray: { input: "$parties", sortBy: { seatsWon: -1 } } } } },
+			{ $project: { _id: 0, year: 1, state: 1, electionType: 1, totalSeats: 1, halfWayMark: 1, status: 1, parties: 1 } },
+		]);
+
+		await redis.set("widget_election_widget", stateElections);
+
+		// Shortcode widget2 (win/lose): caches full state array under election_data_{stateLower}
+		const stateLowerKey = `election_data_${String(state).toLowerCase()}`;
+		await redis.setWithTTL(stateLowerKey, stateElections, 300);
+
+		// Shortcode widget1 (result): caches per-year item under election_data_{md5(state|year)}
+		const md5Key = `election_data_${crypto
+			.createHash("md5")
+			.update(`${state}|${year}`)
+			.digest("hex")}`;
+		let yearData = null;
+		if (Array.isArray(stateElections)) {
+			yearData = stateElections.find(
+				(item) => String(item.year) === String(year),
+			);
+		}
+		if (yearData) {
+			await redis.setWithTTL(md5Key, yearData, 300);
+		}
+
+		// 2) Map widget: /elections/map/top-candidates -> key: widget_bihar_election_map_${state}_${year}
+		const electionDoc = await TempElection.findOne({ state: state, year: parseInt(year) }).lean();
+		if (electionDoc) {
+			const allParties = await PartyElectionModel.aggregate([
+				{ $match: { election: electionDoc._id } },
+				{ $lookup: { from: "parties", localField: "party", foreignField: "_id", as: "partyData" } },
+				{ $unwind: "$partyData" },
+				{ $project: { _id: 0, partyName: "$partyData.party", seatsWon: "$seatsWon", partyColor: "$partyData.color_code" } },
+				{ $sort: { seatsWon: -1 } },
+			]);
+
+			const consAgg = await CandidateElectionModel.aggregate([
+				{ $match: { election: electionDoc._id } },
+				{ $sort: { constituency: 1, votesReceived: -1 } },
+				{ $lookup: { from: "candidates", localField: "candidate", foreignField: "_id", as: "candidate" } },
+				{ $unwind: "$candidate" },
+				{ $lookup: { from: "parties", localField: "candidate.party", foreignField: "_id", as: "party" } },
+				{ $unwind: "$party" },
+				{ $lookup: { from: "constituencies", localField: "constituency", foreignField: "_id", as: "constituency" } },
+				{ $unwind: "$constituency" },
+				{
+					$group: {
+						_id: "$constituency._id",
+						constituencyName: { $first: "$constituency.name" },
+						constituencyId: { $first: "$constituency.constituencyId" },
+						candidates: {
+							$push: {
+								name: "$candidate.name",
+								partyName: "$party.party",
+								votesReceived: "$votesReceived",
+								status: "$status",
+								partyColor: "$party.color_code",
+								partyLogo: "$party.party_logo",
+							},
+						},
+					},
+				},
+				{ $project: { _id: 0, constituencyName: 1, constituencyId: 1, candidates: { $slice: ["$candidates", 2] } } },
+			]);
+
+			const mapPayload = {
+				success: true,
+				data: {
+					electionId: electionDoc._id,
+					electionName: `${state} ${electionDoc.electionType} election ${year}`,
+					totalSeats: electionDoc.totalSeats,
+					halfWayMark: electionDoc.halfWayMark,
+					constituencies: consAgg,
+					parties: allParties,
+				},
+			};
+
+			await redis.set(`widget_bihar_election_map_${state}_${year}`, mapPayload);
+			if (type) await redis.set(`widget_bihar_election_map_${state}_${year}_${type}`, mapPayload);
+		}
+
+		// 3) CN widget constituencies: /constituency -> key: widget_cn_election_constituencies_${state}_${year}
+		if (electionId) {
+			const consList = await ConstituencyElectionModel.find({ election: electionId })
+				.populate({ path: "constituency", select: "-candidates" })
+				.lean()
+				.then((results) => results.map((r) => r.constituency));
+			await redis.set(`widget_cn_election_constituencies_${state}_${year}`, consList);
+			if (type) await redis.set(`widget_cn_election_constituencies_${state}_${year}_${type}`, consList);
+		}
+
+		// 4) CN widget candidates for affected constituency (only if provided)
+		if (electionId && affectedConstituencyId) {
+			const constituencyDoc = await require("../models/constituency").findById(affectedConstituencyId);
+			if (constituencyDoc) {
+				const electionCon = await ConstituencyElectionModel.findOne({ election: electionId, constituency: affectedConstituencyId });
+				const canList = await CandidateElectionModel.find({ election: electionId, constituency: affectedConstituencyId })
+					.populate({
+						path: "candidate",
+						populate: { path: "party", select: "party color_code" },
+					})
+					.lean()
+					.then((rows) => rows.map((row) => ({ ...row, constituencyStatus: electionCon?.status })));
+				await redis.set(`widget_cn_election_candidates_${constituencyDoc.name}_${state}_${year}`, canList);
+				if (type) await redis.set(`widget_cn_election_candidates_${constituencyDoc.name}_${state}_${year}_${type}`, canList);
+			}
+		}
+	} catch (err) {
+		console.error("Error updating widget caches:", err);
+	}
+}
 // Helper function to recalculate all seats for an election
 async function recalculateAllSeatsForElection(electionId) {
 	try {
@@ -725,6 +897,8 @@ router.delete(
 					candidate: candidateId,
 				});
 
+			await calculateAndUpdateSeats(electionId, deletedPartyCandidate.constituency);
+
 			if (!deletedPartyCandidate) {
 				return res.status(400).json({ message: "Party election not found" });
 			}
@@ -780,8 +954,17 @@ router.put("/temp-election/candidate/update", async (req, res) => {
 			console.log("Election is not ongoing, skipping seat calculation");
 		}
 
-		// clear the election widgets cached result from redis
-		await redis.clearAllKeys();
+		// recompute and update widget caches
+		if (redisKeys) {
+			const { state, year, type } = redisKeys;
+			await updateWidgetCaches({
+				state,
+				year,
+				type,
+				electionId: election,
+				affectedConstituencyId: updatedDocument.constituency,
+			});
+		}
 
 		return res.status(200).json(updatedDocument);
 	} catch (error) {
@@ -841,8 +1024,17 @@ router.put("/temp-election/candidates/update-all", async (req, res) => {
 			console.log("Election is not ongoing, skipping seat calculation");
 		}
 
-		// Clear election widgets cache
-		await redis.clearAllKeys();
+		// Recompute and update widget caches
+		if (redisKeys) {
+			const { state, year, type } = redisKeys;
+			await updateWidgetCaches({
+				state,
+				year,
+				type,
+				electionId: election,
+				// Multiple constituencies updated; leave affectedConstituencyId undefined (we updated map/result/cons lists)
+			});
+		}
 
 		return res.status(200).json(updatedDocuments);
 	} catch (error) {
@@ -871,8 +1063,16 @@ router.put("/temp-election/party/update", async (req, res) => {
 
 		const { state, year, type } = redisKeys;
 
-		// clear the election widgets cached result from redis
-		await redis.clearAllKeys();
+		// Recompute and update widget caches
+		if (redisKeys) {
+			const { state, year, type } = redisKeys;
+			await updateWidgetCaches({
+				state,
+				year,
+				type,
+				electionId: election,
+			});
+		}
 
 		return res.status(200).json(updatedDocument);
 	} catch (error) {
