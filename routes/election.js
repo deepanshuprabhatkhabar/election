@@ -183,7 +183,7 @@ async function updateWidgetCaches({ state, year, type, electionId, affectedConst
 		}
 
 		// 5) Alliance widget: /api/alliance/alliances-data/:electionId -> key: election_data_allianz_team
-		if (electionId && year === '2025') {
+		if (electionId && String(year) === '2025') {
 			const alliancesData = await AllianceModel.aggregate([
 				// Match alliances for this election
 				{
