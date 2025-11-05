@@ -1343,11 +1343,11 @@ router.get("/elections/state-elections", async (req, res) => {
 			return res.status(400).json({ message: "State parameter is required" });
 		}
 
-		const cachedResults = await redis.get("widget_election_widget");
+		// const cachedResults = await redis.get("widget_election_widget");
 
-		if (cachedResults) {
-			return res.json(cachedResults);
-		}
+		// if (cachedResults) {
+		// 	return res.json(cachedResults);
+		// }
 
 		const results = await TempElection.aggregate([
 			// Match elections for the requested state
@@ -1461,7 +1461,7 @@ router.get("/elections/state-elections", async (req, res) => {
 				.json({ message: "No elections found for the specified state" });
 		}
 
-		redis.set("widget_election_widget", results);
+		// redis.set("widget_election_widget", results);
 
 		res.json(results);
 	} catch (error) {
