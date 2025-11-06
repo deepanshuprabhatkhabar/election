@@ -13,6 +13,7 @@ const TempElection = require("../models/temp-election.model");
 const ConstituencyModel = require("../models/constituency");
 const ElectionCandidatesModel = require("../models/candidate-election-model");
 const ElectionConstituencyModel = require("../models/constituency-election-model");
+const PartyElectionModel = require("../models/party-election-model");
 
 const redis = RedisManager.getInstance();
 
@@ -466,45 +467,198 @@ router.post("/file-upload", excelUpload.single("file"), async (req, res) => {
 		const sheet = workBook.SheetNames[0];
 		const jsonData = xlsx.utils.sheet_to_json(workBook.Sheets[sheet]);
 
+		// Group data by electionSlug to handle multiple elections in one upload
+		const electionSlugMap = new Map();
+
 		const formattedJsonData = await Promise.all(
 			jsonData.map(async (elem) => {
 				const constituency = await Constituency.findOne({
 					name: elem.constituency,
 				});
-				const party = await Party.findOne({ party: elem.party });
+				// Ensure party exists; create it with just the party name if not found
+				const partyName = (elem.party || "").trim();
+				if (!partyName) {
+					throw new Error(`Missing party for candidate: ${elem.name}`);
+					// console.log(`Missing party for candidate: ${JSON.stringify(elem)}`);
+				}
+				const party = await Party.findOneAndUpdate(
+					{ party: partyName },
+					{ $setOnInsert: { party: partyName } },
+					{ new: true, upsert: true },
+				);
 
-				if (!constituency || !party) {
-					res.status(400).json({
-						message: "Bad Request. Check Your File Data And Try Again",
-					});
+				if (!constituency) {
+					// console.log(`Invalid constituency or party for candidate: ${JSON.stringify(elem)}`);
+					throw new Error(
+						`Invalid constituency or party for candidate: ${elem.name}`,
+					);
 				}
 
-				return new Candidate({
-					name: elem.name,
-					constituency: [constituency._id],
-					age: elem.age,
-					party: party._id,
-					hotCandidate:
-						elem.hotCandidate === true ||
-						elem.hotCandidate === "true" ||
-						elem.hotCandidate === "TRUE",
-					gender: elem.gender,
-				});
+				// Track electionSlug if provided
+				if (elem.electionSlug) {
+					electionSlugMap.set(elem.electionSlug, true);
+				}
+
+				return {
+					candidate: new Candidate({
+						name: elem.name,
+						constituency: [constituency._id],
+						age: elem.age,
+						party: party._id,
+						hotCandidate:
+							elem.hotCandidate === true ||
+							elem.hotCandidate === "true" ||
+							elem.hotCandidate === "TRUE",
+						gender: elem.gender,
+					}),
+					electionSlug: elem.electionSlug,
+					constituencyId: constituency._id,
+				};
 			}),
 		);
 
-		const bulkSaveCandidates = await Candidate.bulkSave(formattedJsonData);
+		// Extract candidates for bulk save
+		const candidatesToSave = formattedJsonData.map((item) => item.candidate);
+
+		const bulkSaveCandidates = await Candidate.bulkSave(candidatesToSave);
 		console.log(bulkSaveCandidates.insertedCount);
-		if (!bulkSaveCandidates.insertedCount === 0) {
-			res
+
+		if (bulkSaveCandidates.insertedCount === 0) {
+			return res
 				.status(400)
 				.json({ message: "Bad Request. Check Your File Data And Try Again" });
 		}
 
-		res.status(200).json({ success: true });
+		// Get the saved candidate IDs (they should be in the same order as candidatesToSave)
+		const savedCandidateIds = bulkSaveCandidates.insertedIds
+			? Object.values(bulkSaveCandidates.insertedIds)
+			: [];
+
+		// If electionSlug is provided, mirror individual add behavior:
+		// 1) Link candidates to election (ElectionCandidatesModel)
+		// 2) Ensure constituency-election records exist (ElectionConstituencyModel)
+		// 3) Ensure parties are linked to election (PartyElectionModel) and add to TempElection.electionInfo.partyIds
+		// 4) Push candidates into TempElection.electionInfo.candidates
+		// 5) Clear relevant redis caches
+		if (electionSlugMap.size > 0) {
+			for (const electionSlug of electionSlugMap.keys()) {
+				const election = await TempElection.findOne({ electionSlug });
+				if (!election) {
+					console.warn(
+						`Election with slug "${electionSlug}" not found. Skipping election linkage for candidates.`,
+					);
+					continue;
+				}
+
+				const electionId = election._id;
+				const state = election.state;
+				const year = election.year;
+				const type = election.electionType;
+
+				const electionCandidateEntries = [];
+				const constituencyEnsures = [];
+				const partyEnsures = new Map(); // partyId -> ensured
+				const addToElectionCandidates = [];
+				const addToElectionParties = new Set();
+
+				for (let i = 0; i < formattedJsonData.length; i++) {
+					const item = formattedJsonData[i];
+					if (item.electionSlug !== electionSlug) continue;
+					const candidateId = savedCandidateIds[i];
+					if (candidateId === undefined) continue;
+
+					// Retrieve partyId from already constructed candidate object
+					const partyId = item.candidate.party;
+					const constituencyId = item.constituencyId;
+
+					// 1) Link candidate to election
+					electionCandidateEntries.push(
+						new ElectionCandidatesModel({
+							election: electionId,
+							candidate: candidateId,
+							constituency: constituencyId,
+						}),
+					);
+
+					// 2) Ensure constituency-election exists
+					constituencyEnsures.push(
+						ElectionConstituencyModel.findOneAndUpdate(
+							{ election: electionId, constituency: constituencyId },
+							{ $setOnInsert: { election: electionId, constituency: constituencyId } },
+							{ new: true, upsert: true },
+						),
+					);
+
+					// 3) Ensure party-election exists; also add party to TempElection if needed
+					if (!partyEnsures.has(String(partyId))) {
+						partyEnsures.set(String(partyId), true);
+						addToElectionParties.add(String(partyId));
+					}
+
+					// 4) Track candidate to push into electionInfo.candidates
+					addToElectionCandidates.push(candidateId);
+				}
+
+				// Execute saves/ensures
+				if (electionCandidateEntries.length > 0) {
+					await ElectionCandidatesModel.bulkSave(electionCandidateEntries);
+				}
+				if (constituencyEnsures.length > 0) {
+					await Promise.all(constituencyEnsures);
+				}
+				if (addToElectionParties.size > 0) {
+					const partyIds = Array.from(addToElectionParties).map((id) => id);
+					// Create PartyElectionModel entries if missing
+					const partyElectionCreates = partyIds.map((partyId) =>
+						PartyElectionModel.findOneAndUpdate(
+							{ election: electionId, party: partyId },
+							{ $setOnInsert: { election: electionId, party: partyId } },
+							{ new: true, upsert: true },
+						),
+					);
+					await Promise.all(partyElectionCreates);
+
+					// Add parties to TempElection.electionInfo.partyIds
+					await TempElection.updateOne(
+						{ _id: electionId },
+						{ $addToSet: { "electionInfo.partyIds": { $each: partyIds } } },
+					);
+				}
+
+				if (addToElectionCandidates.length > 0) {
+					await TempElection.updateOne(
+						{ _id: electionId },
+						{ $addToSet: { "electionInfo.candidates": { $each: addToElectionCandidates } } },
+					);
+				}
+
+				// 5) Clear related redis caches like the individual add does
+				try {
+					redis.delete(`widget_election_widget`);
+					redis.delete(`widget_bihar_election_map_${state}_${year}_${type}`);
+					redis.delete(
+						`widget_cn_election_constituencies_${state}_${year}_${type}`,
+					);
+					redis.deleteByPattern(
+						`widget_cn_election_candidates_*_${state}_${year}_${type}`,
+					);
+				} catch (e) {
+					console.warn("Failed to clear some redis keys:", e?.message);
+				}
+			}
+		}
+
+		res.status(200).json({
+			success: true,
+			message: `Successfully added ${bulkSaveCandidates.insertedCount} candidates${
+				electionSlugMap.size > 0
+					? ` and linked them to ${electionSlugMap.size} election(s)`
+					: ""
+			}`,
+		});
 	} catch (error) {
 		console.error(error);
-		res.status(500).json({ message: "internal server error", error });
+		res.status(500).json({ message: "internal server error", error: error.message });
 	}
 });
 
