@@ -38,12 +38,12 @@ async function getCandidateElectionDetails(
 		},
 		{ $unwind: "$candidateInfo" },
 
-		// Optional user filter
+		// Optional user filter (based on the link constituency, not candidate array)
 		...(userType === "user"
 			? [
 				{
 					$match: {
-						"candidateInfo.constituency": {
+						constituency: {
 							$in: allowedConstituencies.map((id) =>
 								typeof id === "string" ? new mongoose.Types.ObjectId(id) : id,
 							),
@@ -53,27 +53,11 @@ async function getCandidateElectionDetails(
 			]
 			: []),
 
-		// Normalize constituency field (ensure always array)
-		{
-			$addFields: {
-				"candidateInfo.constituency": {
-					$cond: [
-						{ $isArray: "$candidateInfo.constituency" },
-						"$candidateInfo.constituency",
-						["$candidateInfo.constituency"],
-					],
-				},
-			},
-		},
-
-		// Unwind so we get one doc per constituency
-		{ $unwind: "$candidateInfo.constituency" },
-
-		// Lookup constituency info
+		// Lookup constituency info using the election candidate's constituency reference
 		{
 			$lookup: {
 				from: "constituencies",
-				localField: "candidateInfo.constituency",
+				localField: "constituency",
 				foreignField: "_id",
 				as: "constituencyInfo",
 			},
@@ -122,7 +106,7 @@ async function getCandidateElectionDetails(
 				from: "electionconstituencies",
 				let: {
 					electionId: new mongoose.Types.ObjectId(electionId),
-					constituencyId: "$candidateInfo.constituency",
+					constituencyId: "$constituency",
 				},
 				pipeline: [
 					{
@@ -141,9 +125,10 @@ async function getCandidateElectionDetails(
 			},
 		},
 		{
-			$unwind: {
-				path: "$constituencyElectionStatus",
-				preserveNullAndEmptyArrays: true,
+			$addFields: {
+				constituencyElectionStatus: {
+					$arrayElemAt: ["$constituencyElectionStatus", 0],
+				},
 			},
 		},
 
