@@ -10,6 +10,7 @@ const CandidateElectionModel = require("../models/candidate-election-model");
 const ConstituencyElectionModel = require("../models/constituency-election-model");
 const CandidatesModel = require("../models/candidates");
 const AllianceModel = require("../models/alliance.model");
+const ConstituencyModel = require("../models/constituency");
 const mongoose = require("mongoose");
 
 const redis = RedisManager.getInstance();
