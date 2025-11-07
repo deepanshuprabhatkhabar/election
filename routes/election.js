@@ -276,12 +276,16 @@ async function recalculateAllSeatsForElection(electionId) {
 	try {
 		console.log(`\n=== Recalculating all seats for election ${electionId} ===`);
 
-		// Get all constituencies in this election
-		const constituencies = await ConstituencyElectionModel.find({
-			election: electionId,
-		}).populate("constituency");
+		// Get distinct constituencies in this election (avoid duplicates)
+		const constituencyIds = await ConstituencyElectionModel.distinct(
+			"constituency",
+			{ election: electionId },
+		);
+		const constituencies = await ConstituencyModel.find({
+			_id: { $in: constituencyIds },
+		});
 
-		console.log(`Found ${constituencies.length} constituencies`);
+		console.log(`Found ${constituencies.length} unique constituencies`);
 
 		// Reset all party seats to 0
 		await PartyElectionModel.updateMany(
@@ -293,7 +297,7 @@ async function recalculateAllSeatsForElection(electionId) {
 		for (const constituency of constituencies) {
 			const candidatesInConstituency = await CandidateElectionModel.find({
 				election: electionId,
-				constituency: constituency.constituency._id,
+				constituency: constituency._id,
 			}).populate("candidate");
 
 			if (candidatesInConstituency.length === 0) continue;
@@ -330,13 +334,13 @@ async function recalculateAllSeatsForElection(electionId) {
 				});
 				await partyElectionRecord.save();
 				console.log(
-					`Created new record with 1 seat for ${candidateData.party.party} in ${constituency.constituency.name}`,
+					`Created new record with 1 seat for ${candidateData.party.party} in ${constituency.name}`,
 				);
 			} else {
 				partyElectionRecord.seatsWon = (partyElectionRecord.seatsWon || 0) + 1;
 				await partyElectionRecord.save();
 				console.log(
-					`Awarded seat to ${candidateData.party.party} in ${constituency.constituency.name} (total: ${partyElectionRecord.seatsWon})`,
+					`Awarded seat to ${candidateData.party.party} in ${constituency.name} (total: ${partyElectionRecord.seatsWon})`,
 				);
 			}
 		}
