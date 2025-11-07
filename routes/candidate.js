@@ -499,40 +499,77 @@ router.post("/file-upload", excelUpload.single("file"), async (req, res) => {
 					electionSlugMap.set(elem.electionSlug, true);
 				}
 
+				// Check if candidate already exists with same name, age, party, and constituency
+				const existingCandidate = await Candidate.findOne({
+					name: elem.name,
+					age: elem.age,
+					party: party._id,
+					constituency: constituency._id,
+				});
+
 				return {
-					candidate: new Candidate({
-						name: elem.name,
-						constituency: [constituency._id],
-						age: elem.age,
-						party: party._id,
-						hotCandidate:
-							elem.hotCandidate === true ||
-							elem.hotCandidate === "true" ||
-							elem.hotCandidate === "TRUE",
-						gender: elem.gender,
-					}),
+					candidate: existingCandidate
+						? null
+						: new Candidate({
+								name: elem.name,
+								constituency: [constituency._id],
+								age: elem.age,
+								party: party._id,
+								hotCandidate:
+									elem.hotCandidate === true ||
+									elem.hotCandidate === "true" ||
+									elem.hotCandidate === "TRUE",
+								gender: elem.gender,
+						  }),
+					existingCandidateId: existingCandidate ? existingCandidate._id : null,
 					electionSlug: elem.electionSlug,
 					constituencyId: constituency._id,
+					partyId: party._id,
 				};
 			}),
 		);
 
-		// Extract candidates for bulk save
-		const candidatesToSave = formattedJsonData.map((item) => item.candidate);
+		// Separate new candidates from existing ones and track indices
+		const newCandidates = [];
+		const newCandidateIndices = []; // Track original indices in formattedJsonData
+		const allCandidateIds = [];
 
-		const bulkSaveCandidates = await Candidate.bulkSave(candidatesToSave);
-		console.log(bulkSaveCandidates.insertedCount);
+		formattedJsonData.forEach((item, index) => {
+			if (item.existingCandidateId) {
+				// Use existing candidate ID
+				allCandidateIds[index] = item.existingCandidateId;
+			} else {
+				// Track new candidate and its index
+				newCandidates.push(item.candidate);
+				newCandidateIndices.push(index);
+			}
+		});
 
-		if (bulkSaveCandidates.insertedCount === 0) {
+		// Save only new candidates
+		let savedCandidateIds = [];
+		if (newCandidates.length > 0) {
+			const bulkSaveCandidates = await Candidate.bulkSave(newCandidates);
+			console.log(
+				`Inserted ${bulkSaveCandidates.insertedCount} new candidates, reused ${formattedJsonData.length - newCandidates.length} existing candidates`,
+			);
+
+			// Get the saved candidate IDs (they should be in the same order as newCandidates)
+			savedCandidateIds = bulkSaveCandidates.insertedIds
+				? Object.values(bulkSaveCandidates.insertedIds)
+				: [];
+
+			// Map new candidate IDs back to their original positions
+			newCandidateIndices.forEach((originalIndex, newIndex) => {
+				allCandidateIds[originalIndex] = savedCandidateIds[newIndex];
+			});
+		}
+
+		const totalCandidatesProcessed = formattedJsonData.length;
+		if (totalCandidatesProcessed === 0) {
 			return res
 				.status(400)
 				.json({ message: "Bad Request. Check Your File Data And Try Again" });
 		}
-
-		// Get the saved candidate IDs (they should be in the same order as candidatesToSave)
-		const savedCandidateIds = bulkSaveCandidates.insertedIds
-			? Object.values(bulkSaveCandidates.insertedIds)
-			: [];
 
 		// If electionSlug is provided, mirror individual add behavior:
 		// 1) Link candidates to election (ElectionCandidatesModel)
@@ -564,11 +601,11 @@ router.post("/file-upload", excelUpload.single("file"), async (req, res) => {
 				for (let i = 0; i < formattedJsonData.length; i++) {
 					const item = formattedJsonData[i];
 					if (item.electionSlug !== electionSlug) continue;
-					const candidateId = savedCandidateIds[i];
+					const candidateId = allCandidateIds[i];
 					if (candidateId === undefined) continue;
 
-					// Retrieve partyId from already constructed candidate object
-					const partyId = item.candidate.party;
+					// Retrieve partyId from item (works for both new and existing candidates)
+					const partyId = item.partyId;
 					const constituencyId = item.constituencyId;
 
 					// 1) Link candidate to election
@@ -648,9 +685,11 @@ router.post("/file-upload", excelUpload.single("file"), async (req, res) => {
 			}
 		}
 
+		const newCount = newCandidates.length;
+		const existingCount = totalCandidatesProcessed - newCount;
 		res.status(200).json({
 			success: true,
-			message: `Successfully added ${bulkSaveCandidates.insertedCount} candidates${
+			message: `Successfully processed ${totalCandidatesProcessed} candidates (${newCount} new, ${existingCount} existing)${
 				electionSlugMap.size > 0
 					? ` and linked them to ${electionSlugMap.size} election(s)`
 					: ""
