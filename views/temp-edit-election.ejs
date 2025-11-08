@@ -77,7 +77,7 @@ thead{
 		<div class="w-[800px] mx-auto px-4 py-8">
 			<div class="mb-6 flex justify-between items-center"></div>
 
-			<form id="electionForm" class="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-6">
+			<form id="electionForm" class="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-6" onsubmit="return false;">
 				<!-- Hidden fields -->
 				<input type="hidden" name="_id" value="<%= election._id %>" />
 				<input type="hidden" id="currentUserId" value="<%= user._id %>" />
@@ -100,10 +100,9 @@ thead{
 										<div class="relative">
 											<input type="text"
 												id="candidateTableSearch"
-												name="searchTerm"
-												value="<%= locals.searchTerm || '' %>"
 												placeholder="Search by name..."
-												class="p-2 w-full h-10 rounded-md border shadow-sm" />
+												class="p-2 w-full h-10 rounded-md border shadow-sm"
+												onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }" />
 										</div>
 									</div>
 
@@ -114,24 +113,10 @@ thead{
 											Filter by Party
 										</label>
 										<select id="candidatePartyFilter"
-											name="partyFilter"
 											class="w-full h-10 p-2 rounded-md border border-gray-300 shadow-sm  outline-none">
 											<option value="">All Parties
 											</option>
-											<% if(locals.parties) { %>
-												<% parties.forEach(function(party)
-													{ %>
-													<option value="<%= party.value %>"
-														<%=locals.selectedParty
-														&&
-														locals.selectedParty===party.value
-														? 'selected'
-														: '' %>>
-														<%= party.name
-															%>
-													</option>
-													<% }); %>
-														<% } %>
+											<!-- Options will be populated by JavaScript -->
 										</select>
 									</div>
 
@@ -142,60 +127,22 @@ thead{
 											Filter by Constituency
 										</label>
 										<select id="candidateConstituencyFilter"
-											name="constituencyFilter"
 											class="w-full h-10 p-2 rounded-md border border-gray-300 shadow-sm  outline-none">
 											<option value="">All
 												Constituencies</option>
-											<% if(locals.constituencies) {
-												%>
-												<% constituencies.forEach(function(constituency)
-													{ %>
-													<option value="<%= constituency.value %>"
-														<%=locals.selectedConstituency
-														&&
-														locals.selectedConstituency===constituency.value
-														? 'selected'
-														: '' %>>
-														<%= constituency.name
-															%>
-													</option>
-													<% }); %>
-														<% } %>
+											<!-- Options will be populated by JavaScript -->
 										</select>
 									</div>
 								</div>
 
 								<!-- Filters active indicator -->
 								<div id="activeFilters"
-									class="<%= (locals.searchTerm || locals.selectedParty || locals.selectedConstituency) ? 'flex' : 'hidden' %> items-center mb-4 py-2 px-3 bg-blue-50 text-sm text-blue-600 rounded-md">
+									class="hidden items-center mb-4 py-2 px-3 bg-blue-50 text-sm text-blue-600 rounded-md">
 
 									<span id="activeFiltersText"
 										class="ml-1 font-medium">
-										<% let filterTexts=[];
-											if(locals.searchTerm)
-											filterTexts.push(`"${locals.searchTerm}"`);
-											if(locals.selectedParty) { const
-											partyName=locals.parties.find(p=>
-											p.value ===
-											locals.selectedParty)?.name ||
-											locals.selectedParty;
-											filterTexts.push(`Party:
-											${partyName}`);
-											}
-											if(locals.selectedConstituency)
-											{
-											const constituencyName =
-											locals.constituencies.find(c =>
-											c.value ===
-											locals.selectedConstituency)?.name
-											|| locals.selectedConstituency;
-											filterTexts.push(`Constituency:
-											${constituencyName}`);
-											}
-											%>
-
 									</span>
-									<button id="clearFilters"
+									<button type="button" id="clearFilters"
 										class="ml-auto flex items-center text-red-500 hover:text-red-700"
 										>
 										<svg xmlns="http://www.w3.org/2000/svg"
@@ -1283,6 +1230,8 @@ thead{
 
 
 					function updateAllCandidateVotes() {
+						document.getElementById('updateAllCandidatesVotes').disabled = true;
+						document.getElementById('updateAllCandidatesVotes').textContent = 'Updating...';
 						const electionId = document.querySelector('input[name="_id"]').value;
 						const candidateRows = document.querySelectorAll('[id^="candidate-row-"]');
 
@@ -1328,10 +1277,18 @@ thead{
 							return response.json();
 						})
 						.then(data => {
+							document.getElementById('updateAllCandidatesVotes').disabled = false;
+							document.getElementById('updateAllCandidatesVotes').innerHTML = `
+								<i class="fas fa-sync-alt mr-2"></i>Update All Candidates
+							`;
 							alert('All candidate data updated successfully!');
 							console.log('Updated documents:', data);
 						})
 						.catch(error => {
+							document.getElementById('updateAllCandidatesVotes').disabled = false;
+							document.getElementById('updateAllCandidatesVotes').innerHTML = `
+								<i class="fas fa-sync-alt mr-2"></i>Update All Candidates
+							`;
 							console.error(error);
 							alert('Failed to update candidate data. Please try again.');
 						});
@@ -1679,7 +1636,11 @@ thead{
 				candidateTableSearch.addEventListener('input', filterCandidateTable);
 				candidatePartyFilter.addEventListener('change', filterCandidateTable);
 				candidateConstituencyFilter.addEventListener('change', filterCandidateTable);
-				clearFiltersBtn.addEventListener('click', clearAllFilters);
+				clearFiltersBtn.addEventListener('click', function(e) {
+					e.preventDefault();
+					e.stopPropagation();
+					clearAllFilters(e);
+				});
 
 				// Function to populate the filter dropdowns
 				function populateFilters() {
@@ -1782,19 +1743,29 @@ thead{
 				}
 
 				// Function to clear all filters
-				function clearAllFilters() {
+				function clearAllFilters(e) {
+					// Prevent any form submission or page reload
+					if (e) {
+						e.preventDefault();
+						e.stopPropagation();
+					}
+					
 					candidateTableSearch.value = '';
 					candidatePartyFilter.value = '';
 					candidateConstituencyFilter.value = '';
 
 					// Reset display
 					activeFilters.classList.add('hidden');
+					activeFiltersText.textContent = '';
 
 					// Show all rows
 					const rows = candidatesTableBody.querySelectorAll('tr');
 					rows.forEach(row => {
 						row.style.display = '';
 					});
+					
+					// Prevent any default behavior
+					return false;
 				}
 			});
 		</script>
