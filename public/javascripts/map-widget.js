@@ -3081,7 +3081,9 @@ class MapWidget {
           if (candidate) {
             path.setAttribute("data-candidate", candidate.name || "Unknown");
             path.setAttribute("data-totalVotes", candidate.votesReceived || "0");
-            path.style.fill = candidate.partyColor;
+	    if(candidate.votesReceived && Number(candidate.votesReceived) > 0){
+		    path.style.fill = candidate.partyColor;
+	    }
             path.setAttribute("data-partyName", candidate.partyName || "N/A");
             path.setAttribute(
               "data-partyLogo",
