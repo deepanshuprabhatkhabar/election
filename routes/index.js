@@ -1342,7 +1342,6 @@ router.get("/election/years/:state", async (req, res) => {
 			});
 		}
 
-		redis.set;
 
 		res.json({
 			success: true,
@@ -1520,14 +1519,14 @@ router.get("/elections/map/top-candidates", async (req, res) => {
 			year: parseInt(year),
 		}).lean();
 
-		const type = election.electionType;
-
 		if (!election) {
 			return res.status(404).json({
 				success: false,
 				message: "Election not found",
 			});
 		}
+
+		const type = election.electionType;
 
 		// Get all participating parties first
 		const allParties = await PartyElectionModel.aggregate([
@@ -1545,6 +1544,7 @@ router.get("/elections/map/top-candidates", async (req, res) => {
 				$project: {
 					_id: 0,
 					partyName: "$partyData.party",
+					partyHindi: "$partyData.partyHindi",
 					seatsWon: "$seatsWon",
 					partyColor: "$partyData.color_code",
 				},
@@ -1587,12 +1587,15 @@ router.get("/elections/map/top-candidates", async (req, res) => {
 				$group: {
 					_id: "$constituency._id",
 					constituencyName: { $first: "$constituency.name" },
+					constituencyHindi: { $first: "$constituency.constituencyHindi" },
 					constituencyId: { $first: "$constituency.constituencyId" },
 
 					candidates: {
 						$push: {
 							name: "$candidate.name",
+							hindiName: "$candidate.hindiName",
 							partyName: "$party.party",
+							partyHindi: "$party.partyHindi",
 							votesReceived: "$votesReceived",
 							status: "$status",
 							partyColor: "$party.color_code",
@@ -1605,6 +1608,7 @@ router.get("/elections/map/top-candidates", async (req, res) => {
 				$project: {
 					_id: 0,
 					constituencyName: 1,
+					constituencyHindi: 1,
 					constituencyId: 1,
 					candidates: { $slice: ["$candidates", 2] },
 				},

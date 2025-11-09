@@ -14,7 +14,7 @@ class MapWidget {
 
   async loadDependencies() {
     // Base URL for resources
-    const baseUrl = "https://election-stage.prabhatkhabar.com/";
+    const baseUrl = "http://election-stage.prabhatkhabar.com/";
 
     // Load CSS files
     const cssFiles = [
@@ -29,7 +29,7 @@ class MapWidget {
     const jsFiles = [
       `${baseUrl}/javascripts/popper.min.js`,
       `${baseUrl}/javascripts/tippy.js`,
-      "https://cdn.jsdelivr.net/npm/flowbite@2.5.2/dist/flowbite.min.js",
+      "http://cdn.jsdelivr.net/npm/flowbite@2.5.2/dist/flowbite.min.js",
     ];
 
     // Load CSS files
@@ -2956,7 +2956,7 @@ class MapWidget {
 
     try {
       const response = await fetch(
-        `https://election-stage.prabhatkhabar.com/elections/map/top-candidates?state=${stateName}&year=${clickedYear}`
+        `http://election-stage.prabhatkhabar.com/elections/map/top-candidates?state=${stateName}&year=${clickedYear}`
       );
       const data = await response.json();
 
@@ -2975,7 +2975,7 @@ class MapWidget {
 
     try {
       const result = await fetch(
-        `https://election-stage.prabhatkhabar.com/election/years/Bihar`
+        `http://election-stage.prabhatkhabar.com/election/years/Bihar`
       );
       const allYears = (await result.json()).data.availableYears;
 
@@ -3038,7 +3038,7 @@ class MapWidget {
       partyColorElement.style.borderRadius = "50%";
 
       const partyNameElement = document.createElement("span");
-      partyNameElement.innerText = party.partyName;
+      partyNameElement.innerText = party.partyHindi || party.partyName;
 
       partyElement.appendChild(partyColorElement);
       partyElement.appendChild(partyNameElement);
@@ -3053,14 +3053,19 @@ class MapWidget {
       // Reset to default styling and clear all data attributes
       path.style.fill = "#ffffff"; // Default color
       path.removeAttribute("data-candidate");
+      path.removeAttribute("data-candidate-en");
       path.removeAttribute("data-totalVotes");
       path.removeAttribute("data-partyName");
+      path.removeAttribute("data-partyName-en");
       path.removeAttribute("data-partyLogo");
       path.removeAttribute("data-trail-partyLogo");
       path.removeAttribute("data-trail-candidate");
+      path.removeAttribute("data-trail-candidate-en");
       path.removeAttribute("data-trail-totalVotes");
       path.removeAttribute("data-trail-partyName");
+      path.removeAttribute("data-trail-partyName-en");
       path.removeAttribute("data-constituency");
+      path.removeAttribute("data-constituency-en");
     });
 
     // Then apply data only to constituencies that have data
@@ -3073,18 +3078,27 @@ class MapWidget {
           const candidate = constituency.candidates[0];
           const trailingCandidate = constituency.candidates[1];
 
-          path.setAttribute(
-            "data-constituency",
-            constituency.constituencyName || ""
-          );
+          // Use Hindi name with English fallback for constituency
+          const constituencyDisplayName = constituency.constituencyHindi || constituency.constituencyName || "";
+          path.setAttribute("data-constituency", constituencyDisplayName);
+          path.setAttribute("data-constituency-en", constituency.constituencyName || "");
 
           if (candidate) {
-            path.setAttribute("data-candidate", candidate.name || "Unknown");
+            // Use Hindi name with English fallback for candidate
+            const candidateDisplayName = candidate.hindiName || candidate.name || "Unknown";
+            path.setAttribute("data-candidate", candidateDisplayName);
+            path.setAttribute("data-candidate-en", candidate.name || "Unknown");
+            
             path.setAttribute("data-totalVotes", candidate.votesReceived || "0");
 	    if(candidate.votesReceived && Number(candidate.votesReceived) > 0){
 		    path.style.fill = candidate.partyColor;
 	    }
-            path.setAttribute("data-partyName", candidate.partyName || "N/A");
+            
+            // Use Hindi name with English fallback for party
+            const partyDisplayName = candidate.partyHindi || candidate.partyName || "N/A";
+            path.setAttribute("data-partyName", partyDisplayName);
+            path.setAttribute("data-partyName-en", candidate.partyName || "N/A");
+            
             path.setAttribute(
               "data-partyLogo",
               candidate?.partyLogo || ""
@@ -3095,18 +3109,21 @@ class MapWidget {
                 "data-trail-partyLogo",
                 trailingCandidate?.partyLogo || ""
               );
-              path.setAttribute(
-                "data-trail-candidate",
-                trailingCandidate.name || ""
-              );
+              
+              // Use Hindi name with English fallback for trailing candidate
+              const trailCandidateDisplayName = trailingCandidate.hindiName || trailingCandidate.name || "";
+              path.setAttribute("data-trail-candidate", trailCandidateDisplayName);
+              path.setAttribute("data-trail-candidate-en", trailingCandidate.name || "");
+              
               path.setAttribute(
                 "data-trail-totalVotes",
                 trailingCandidate?.votesReceived || ""
               );
-              path.setAttribute(
-                "data-trail-partyName",
-                trailingCandidate?.partyName || ""
-              );
+              
+              // Use Hindi name with English fallback for trailing party
+              const trailPartyDisplayName = trailingCandidate.partyHindi || trailingCandidate.partyName || "";
+              path.setAttribute("data-trail-partyName", trailPartyDisplayName);
+              path.setAttribute("data-trail-partyName-en", trailingCandidate.partyName || "");
             }
           }
         }
@@ -3115,22 +3132,25 @@ class MapWidget {
   }
 
   showPopover(event, path) {
-    const candidate = path.getAttribute("data-candidate");
+    // Get Hindi names with English fallback
+    const candidate = path.getAttribute("data-candidate") || path.getAttribute("data-candidate-en") || "Unknown";
     const totalVotes = path.getAttribute("data-totalVotes");
-    const partyName = path.getAttribute("data-partyName");
+    const partyName = path.getAttribute("data-partyName") || path.getAttribute("data-partyName-en") || "N/A";
     const color = path.getAttribute("data-color") || "#000";
-    const constituency = path.getAttribute("data-name") || "Unknown";
+    // Use constituency from data-constituency (Hindi) or data-name (fallback) or data-constituency-en
+    const constituency = path.getAttribute("data-constituency") || path.getAttribute("data-name") || path.getAttribute("data-constituency-en") || "Unknown";
     const won = path.getAttribute("data-won") || "awaiting";
     const partyLogo =
       path.getAttribute("data-partyLogo") ||
-      "https://media.istockphoto.com/id/1409329028/vector/no-picture-available-placeholder-thumbnail-icon-illustration-design.jpg?s=612x612&w=0&k=20&c=_zOuJu755g2eEUioiOUdz_mHKJQJn-tDgIAhQzyeKUQ=";
+      "http://media.istockphoto.com/id/1409329028/vector/no-picture-available-placeholder-thumbnail-icon-illustration-design.jpg?s=612x612&w=0&k=20&c=_zOuJu755g2eEUioiOUdz_mHKJQJn-tDgIAhQzyeKUQ=";
 
-    const trailCandidate = path.getAttribute("data-trail-candidate");
+    // Get Hindi names with English fallback for trailing candidate
+    const trailCandidate = path.getAttribute("data-trail-candidate") || path.getAttribute("data-trail-candidate-en") || "";
     const trailTotalVotes = path.getAttribute("data-trail-totalVotes");
-    const trailPartyName = path.getAttribute("data-trail-partyName");
+    const trailPartyName = path.getAttribute("data-trail-partyName") || path.getAttribute("data-trail-partyName-en") || "";
     const trailPartyLogo =
       path.getAttribute("data-trail-partyLogo") ||
-      "https://media.istockphoto.com/id/1409329028/vector/no-picture-available-placeholder-thumbnail-icon-illustration-design.jpg?s=612x612&w=0&k=20&c=_zOuJu755g2eEUioiOUdz_mHKJQJn-tDgIAhQzyeKUQ=";
+      "http://media.istockphoto.com/id/1409329028/vector/no-picture-available-placeholder-thumbnail-icon-illustration-design.jpg?s=612x612&w=0&k=20&c=_zOuJu755g2eEUioiOUdz_mHKJQJn-tDgIAhQzyeKUQ=";
 
     // Check if there's any data for this constituency
     const hasData = candidate && candidate !== "" && totalVotes && totalVotes !== "0";
@@ -3266,7 +3286,7 @@ class MapWidget {
 
 generateLinkFromConstituencyName(constituencyName) {
 	const slug = encodeURIComponent(constituencyName.toLowerCase().replace(/\s+/g, '-'));
-	return `https://www.prabhatkhabar.com/bihar-election/${slug}-constituency`;
+	return `http://www.prabhatkhabar.com/bihar-election/${slug}-constituency`;
   }
   
 
@@ -3291,12 +3311,14 @@ generateLinkFromConstituencyName(constituencyName) {
           }
 		  if(this.isMobile()){
 			setTimeout(() => {
-				const constituencyName = path?.getAttribute('data-name'); 
+				// Use English name for URL generation (fallback to data-name for backward compatibility)
+				const constituencyName = path?.getAttribute('data-constituency-en') || path?.getAttribute('data-name'); 
 				if(!constituencyName) return;
 				window.open(this.generateLinkFromConstituencyName(constituencyName), "_blank")
 			}, 2000)
 		  } else {
-			const constituencyName = path?.getAttribute('data-name'); 
+			// Use English name for URL generation (fallback to data-name for backward compatibility)
+			const constituencyName = path?.getAttribute('data-constituency-en') || path?.getAttribute('data-name'); 
 			if(!constituencyName) return;
 			window.open(this.generateLinkFromConstituencyName(constituencyName), "_blank")
 		  }
