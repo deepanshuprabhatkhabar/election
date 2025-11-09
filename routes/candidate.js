@@ -472,14 +472,15 @@ router.post("/file-upload", excelUpload.single("file"), async (req, res) => {
 
 		const formattedJsonData = await Promise.all(
 			jsonData.map(async (elem) => {
+				const constituencyName = (elem.constituency || "").trim();
 				const constituency = await Constituency.findOne({
-					name: elem.constituency,
+					name: constituencyName,
 				});
+
 				// Ensure party exists; create it with just the party name if not found
 				const partyName = (elem.party || "").trim();
 				if (!partyName) {
 					throw new Error(`Missing party for candidate: ${elem.name}`);
-					// console.log(`Missing party for candidate: ${JSON.stringify(elem)}`);
 				}
 				const party = await Party.findOneAndUpdate(
 					{ party: partyName },
@@ -488,10 +489,37 @@ router.post("/file-upload", excelUpload.single("file"), async (req, res) => {
 				);
 
 				if (!constituency) {
-					// console.log(`Invalid constituency or party for candidate: ${JSON.stringify(elem)}`);
 					throw new Error(
-						`Invalid constituency or party for candidate: ${elem.name}`,
+						`Invalid constituency for candidate: ${elem.name}. Constituency "${constituencyName}" not found.`,
 					);
+				}
+
+				// Update Hindi names if provided and not already set
+				const updatePromises = [];
+
+				// Update constituency Hindi name if provided and missing
+				if (elem.constituencyHindi && !constituency.constituencyHindi) {
+					updatePromises.push(
+						Constituency.updateOne(
+							{ _id: constituency._id },
+							{ $set: { constituencyHindi: elem.constituencyHindi.trim() } }
+						)
+					);
+				}
+
+				// Update party Hindi name if provided and missing
+				if (elem.partyHindi && !party.partyHindi) {
+					updatePromises.push(
+						Party.updateOne(
+							{ _id: party._id },
+							{ $set: { partyHindi: elem.partyHindi.trim() } }
+						)
+					);
+				}
+
+				// Execute updates for Hindi names
+				if (updatePromises.length > 0) {
+					await Promise.all(updatePromises);
 				}
 
 				// Track electionSlug if provided
@@ -499,27 +527,56 @@ router.post("/file-upload", excelUpload.single("file"), async (req, res) => {
 					electionSlugMap.set(elem.electionSlug, true);
 				}
 
-				// Check if candidate already exists with same name, age, party, and constituency
-				const existingCandidate = await Candidate.findOne({
-					name: elem.name,
-					age: elem.age,
+				// Check if candidate already exists with same name, age, party, gender, and constituency
+				// Build query object with all required fields
+				// Note: constituency is an array in the Candidate model, so we use $in
+				const candidateQuery = {
+					name: elem.name.trim(),
 					party: party._id,
-					constituency: constituency._id,
-				});
+					constituency: { $in: [constituency._id] },
+				};
+
+				// Add optional fields if they exist
+				// Handle age: convert to number if present, but allow 0 as a valid age
+				if (elem.age !== undefined && elem.age !== null && elem.age !== "") {
+					const ageNum = Number(elem.age);
+					if (!isNaN(ageNum)) {
+						candidateQuery.age = ageNum;
+					}
+				}
+				// Handle gender: include in query if present
+				if (elem.gender !== undefined && elem.gender !== null && elem.gender !== "") {
+					candidateQuery.gender = elem.gender.trim();
+				}
+
+				let existingCandidate = await Candidate.findOne(candidateQuery);
+
+				// Update candidate Hindi name if provided and candidate exists but doesn't have hindiName
+				if (existingCandidate && elem.hindiName && !existingCandidate.hindiName) {
+					await Candidate.updateOne(
+						{ _id: existingCandidate._id },
+						{ $set: { hindiName: elem.hindiName.trim() } }
+					);
+					// Refresh the candidate document to get updated data
+					existingCandidate = await Candidate.findById(existingCandidate._id);
+				}
 
 				return {
 					candidate: existingCandidate
 						? null
 						: new Candidate({
-								name: elem.name,
+								name: elem.name.trim(),
+								hindiName: elem.hindiName ? elem.hindiName.trim() : undefined,
 								constituency: [constituency._id],
-								age: elem.age,
+								age: elem.age !== undefined && elem.age !== null && elem.age !== "" 
+									? (isNaN(Number(elem.age)) ? undefined : Number(elem.age))
+									: undefined,
 								party: party._id,
 								hotCandidate:
 									elem.hotCandidate === true ||
 									elem.hotCandidate === "true" ||
 									elem.hotCandidate === "TRUE",
-								gender: elem.gender,
+								gender: elem.gender ? elem.gender.trim() : undefined,
 						  }),
 					existingCandidateId: existingCandidate ? existingCandidate._id : null,
 					electionSlug: elem.electionSlug,
@@ -598,6 +655,18 @@ router.post("/file-upload", excelUpload.single("file"), async (req, res) => {
 				const addToElectionCandidates = [];
 				const addToElectionParties = new Set();
 
+				// Get all existing candidate-election links for this election to avoid duplicates
+				const existingCandidateElections = await ElectionCandidatesModel.find({
+					election: electionId,
+				}).select("candidate constituency");
+				
+				// Create a Set for quick lookup: "candidateId-constituencyId"
+				const existingLinks = new Set(
+					existingCandidateElections.map(
+						(ce) => `${ce.candidate.toString()}-${ce.constituency.toString()}`
+					)
+				);
+
 				for (let i = 0; i < formattedJsonData.length; i++) {
 					const item = formattedJsonData[i];
 					if (item.electionSlug !== electionSlug) continue;
@@ -608,6 +677,15 @@ router.post("/file-upload", excelUpload.single("file"), async (req, res) => {
 					const partyId = item.partyId;
 					const constituencyId = item.constituencyId;
 
+					// Check if this candidate-constituency is already linked to this election
+					const linkKey = `${candidateId.toString()}-${constituencyId.toString()}`;
+					if (existingLinks.has(linkKey)) {
+						console.log(
+							`Candidate ${candidateId} already linked to election ${electionId} for constituency ${constituencyId}. Skipping.`
+						);
+						continue;
+					}
+
 					// 1) Link candidate to election
 					electionCandidateEntries.push(
 						new ElectionCandidatesModel({
@@ -616,6 +694,9 @@ router.post("/file-upload", excelUpload.single("file"), async (req, res) => {
 							constituency: constituencyId,
 						}),
 					);
+
+					// Mark as existing to avoid duplicates in the same batch
+					existingLinks.add(linkKey);
 
 					// 2) Ensure constituency-election exists
 					constituencyEnsures.push(
@@ -632,8 +713,10 @@ router.post("/file-upload", excelUpload.single("file"), async (req, res) => {
 						addToElectionParties.add(String(partyId));
 					}
 
-					// 4) Track candidate to push into electionInfo.candidates
-					addToElectionCandidates.push(candidateId);
+					// 4) Track candidate to push into electionInfo.candidates (only if not already added)
+					if (!addToElectionCandidates.includes(candidateId)) {
+						addToElectionCandidates.push(candidateId);
+					}
 				}
 
 				// Execute saves/ensures
