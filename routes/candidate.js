@@ -184,15 +184,23 @@ router.get("/cn-list", async (req, res, next) => {
 		})
 			.populate({
 				path: "candidate",
+				select: "name hindiName image age gender",
 				populate: {
 					path: "party",
-					select: "party color_code",
+					select: "party partyHindi color_code party_logo",
 				},
+			})
+			.populate({
+				path: "constituency",
+				select: "name constituencyHindi",
 			})
 			.lean()
 			.then((results) =>
 				results.map((result) => {
-					return { ...result, constituencyStatus: electionConstituency.status };
+					return { 
+						...result, 
+						constituencyStatus: electionConstituency ? electionConstituency.status : 'ongoing'
+					};
 				}),
 			);
 

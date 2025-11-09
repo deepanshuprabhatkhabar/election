@@ -528,15 +528,31 @@ router.post("/temp-elections", async (req, res) => {
 				}),
 		);
 
-		const constituencyElections = constituencies.map(
-			(constituencyId) =>
-				new ConstituencyElectionModel({
+		// Deduplicate constituencies array to prevent duplicate entries
+		const uniqueConstituencies = [...new Set(constituencies.map(id => id.toString()))];
+		
+		// Use bulkWrite with updateOne and upsert to handle duplicates gracefully
+		// This ensures that if a constituency-election relationship already exists, it won't create a duplicate
+		const constituencyOperations = uniqueConstituencies.map((constituencyId) => ({
+			updateOne: {
+				filter: {
 					election: savedElection._id,
 					constituency: constituencyId,
-				}),
-		);
+				},
+				update: {
+					$setOnInsert: {
+						election: savedElection._id,
+						constituency: constituencyId,
+						status: "ongoing",
+					},
+				},
+				upsert: true,
+			},
+		}));
 
-		await ConstituencyElectionModel.bulkSave(constituencyElections);
+		if (constituencyOperations.length > 0) {
+			await ConstituencyElectionModel.bulkWrite(constituencyOperations);
+		}
 
 		await CandidateElectionModel.bulkSave(candidates);
 

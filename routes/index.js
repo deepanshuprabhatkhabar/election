@@ -388,9 +388,49 @@ router.get(
 			if (!election) {
 				return res.status(404).send("Election not found");
 			}
-			const electionConstituencies = await ElectionConstituencyModel.find({
-				election: electionId,
-			}).populate("constituency");
+			// Fetch constituencies and deduplicate by constituency ID
+			// Using aggregation to group by constituency and keep only one record per constituency
+			// This handles cases where duplicates may already exist in the database
+			const electionIdObj = mongoose.Types.ObjectId.isValid(electionId) 
+				? new mongoose.Types.ObjectId(electionId) 
+				: electionId;
+				
+			const electionConstituenciesRaw = await ElectionConstituencyModel.aggregate([
+				{ $match: { election: electionIdObj } },
+				{
+					$group: {
+						_id: "$constituency",
+						docId: { $first: "$_id" },
+						election: { $first: "$election" },
+						status: { $first: "$status" },
+					},
+				},
+				{
+					$lookup: {
+						from: "constituencies",
+						localField: "_id",
+						foreignField: "_id",
+						as: "constituency",
+					},
+				},
+				{ $unwind: "$constituency" },
+				{
+					$project: {
+						_id: "$docId",
+						election: 1,
+						constituency: 1,
+						status: 1,
+					},
+				},
+			]);
+
+			// Transform to match the expected structure with populated constituency
+			const electionConstituencies = electionConstituenciesRaw.map((item) => ({
+				_id: item._id,
+				election: item.election,
+				constituency: item.constituency,
+				status: item.status,
+			}));
 
 			let partyElectionDetails;
 			let candidateElectionDetails;
@@ -1389,6 +1429,7 @@ router.get("/elections/state-elections", async (req, res) => {
 								{
 									party: {
 										party: "$partyResults.partyDetails.party",
+										partyHindi: "$partyResults.partyDetails.partyHindi",
 										color_code: "$partyResults.partyDetails.color_code",
 										party_logo: "$partyResults.partyDetails.party_logo",
 									},
@@ -1639,7 +1680,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 								localField: "party",
 								foreignField: "_id",
 								as: "party",
-								pipeline: [{ $project: { party: 1, color_code: 1 } }],
+								pipeline: [{ $project: { party: 1, color_code: 1, partyHindi: 1 } }],
 							},
 						},
 						// Populate constituency
@@ -1649,7 +1690,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 								localField: "constituency",
 								foreignField: "_id",
 								as: "constituency",
-								pipeline: [{ $project: { name: 1 } }],
+								pipeline: [{ $project: { name: 1, constituencyHindi: 1 } }],
 							},
 						},
 						// Lookup ElectionCandidate info (votesReceived + status)
@@ -1686,6 +1727,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 						{
 							$project: {
 								name: 1,
+								hindiName: 1,
 								image: 1,
 								party: { $arrayElemAt: ["$party", 0] },
 								constituency: { $arrayElemAt: ["$constituency", 0] },
@@ -1697,18 +1739,30 @@ router.get("/election/hot-candidates", async (req, res) => {
 				},
 			},
 
-			// Final projection
+			// Final projection - use $map to transform hotCandidates array
 			{
 				$project: {
 					_id: 0,
 					hotCandidates: {
-						name: 1,
-						image: 1,
-						"party.party": 1,
-						"party.color_code": 1,
-						"constituency.name": 1,
-						"electionStats.votesReceived": 1,
-						"electionStats.status": 1,
+						$map: {
+							input: "$hotCandidates",
+							as: "candidate",
+							in: {
+								name: "$$candidate.name",
+								hindiName: "$$candidate.hindiName",
+								image: "$$candidate.image",
+								party: {
+									party: "$$candidate.party.party",
+									partyHindi: "$$candidate.party.partyHindi",
+									color_code: "$$candidate.party.color_code",
+								},
+								constituency: {
+									name: "$$candidate.constituency.name",
+									constituencyHindi: "$$candidate.constituency.constituencyHindi",
+								},
+								electionStats: "$$candidate.electionStats",
+							},
+						},
 					},
 				},
 			},
