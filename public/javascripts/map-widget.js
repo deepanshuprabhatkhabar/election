@@ -14,7 +14,7 @@ class MapWidget {
 
   async loadDependencies() {
     // Base URL for resources
-    const baseUrl = "http://election-stage.prabhatkhabar.com/";
+    const baseUrl = "https://election-stage.prabhatkhabar.com/";
 
     // Load CSS files
     const cssFiles = [
@@ -29,7 +29,7 @@ class MapWidget {
     const jsFiles = [
       `${baseUrl}/javascripts/popper.min.js`,
       `${baseUrl}/javascripts/tippy.js`,
-      "http://cdn.jsdelivr.net/npm/flowbite@2.5.2/dist/flowbite.min.js",
+      "https://cdn.jsdelivr.net/npm/flowbite@2.5.2/dist/flowbite.min.js",
     ];
 
     // Load CSS files
@@ -157,7 +157,7 @@ class MapWidget {
 
             <div class="svg_container pb-12 flex flex-col items-center justify-center" id="svg_container" style="width: 100%">
                 <div class="const-map bihar">
-                    <svg xmlns="http://www.w3.org/2000/svg" xmlns:g="http://base.google.com/ns/1.0"
+                    <svg xmlns="https://www.w3.org/2000/svg" xmlns:g="https://base.google.com/ns/1.0"
                         style="width: 100%; height: 100%;" stroke-linejoin="round" stroke-linecap="round"
                         viewBox="0 0 800 630" height="400" width="500" baseProfile="tiny" version="1.2">
                         <g id="br">
@@ -2956,7 +2956,7 @@ class MapWidget {
 
     try {
       const response = await fetch(
-        `http://election-stage.prabhatkhabar.com/elections/map/top-candidates?state=${stateName}&year=${clickedYear}`
+        `https://election-stage.prabhatkhabar.com/elections/map/top-candidates?state=${stateName}&year=${clickedYear}`
       );
       const data = await response.json();
 
@@ -2975,7 +2975,7 @@ class MapWidget {
 
     try {
       const result = await fetch(
-        `http://election-stage.prabhatkhabar.com/election/years/Bihar`
+        `https://election-stage.prabhatkhabar.com/election/years/Bihar`
       );
       const allYears = (await result.json()).data.availableYears;
 
@@ -3142,7 +3142,7 @@ class MapWidget {
     const won = path.getAttribute("data-won") || "awaiting";
     const partyLogo =
       path.getAttribute("data-partyLogo") ||
-      "http://media.istockphoto.com/id/1409329028/vector/no-picture-available-placeholder-thumbnail-icon-illustration-design.jpg?s=612x612&w=0&k=20&c=_zOuJu755g2eEUioiOUdz_mHKJQJn-tDgIAhQzyeKUQ=";
+      "https://media.istockphoto.com/id/1409329028/vector/no-picture-available-placeholder-thumbnail-icon-illustration-design.jpg?s=612x612&w=0&k=20&c=_zOuJu755g2eEUioiOUdz_mHKJQJn-tDgIAhQzyeKUQ=";
 
     // Get Hindi names with English fallback for trailing candidate
     const trailCandidate = path.getAttribute("data-trail-candidate") || path.getAttribute("data-trail-candidate-en") || "";
@@ -3150,7 +3150,7 @@ class MapWidget {
     const trailPartyName = path.getAttribute("data-trail-partyName") || path.getAttribute("data-trail-partyName-en") || "";
     const trailPartyLogo =
       path.getAttribute("data-trail-partyLogo") ||
-      "http://media.istockphoto.com/id/1409329028/vector/no-picture-available-placeholder-thumbnail-icon-illustration-design.jpg?s=612x612&w=0&k=20&c=_zOuJu755g2eEUioiOUdz_mHKJQJn-tDgIAhQzyeKUQ=";
+      "https://media.istockphoto.com/id/1409329028/vector/no-picture-available-placeholder-thumbnail-icon-illustration-design.jpg?s=612x612&w=0&k=20&c=_zOuJu755g2eEUioiOUdz_mHKJQJn-tDgIAhQzyeKUQ=";
 
     // Check if there's any data for this constituency
     const hasData = candidate && candidate !== "" && totalVotes && totalVotes !== "0";
@@ -3286,7 +3286,7 @@ class MapWidget {
 
 generateLinkFromConstituencyName(constituencyName) {
 	const slug = encodeURIComponent(constituencyName.toLowerCase().replace(/\s+/g, '-'));
-	return `http://www.prabhatkhabar.com/bihar-election/${slug}-constituency`;
+	return `https://www.prabhatkhabar.com/bihar-election/${slug}-constituency`;
   }
   
 
