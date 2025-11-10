@@ -91,12 +91,12 @@ router.get("/", async (req, res, next) => {
   try {
     const { state, year } = req.query;
 
-    const key = `widget_cn_election_constituencies_${state}_${year}`;
+    // const key = `widget_cn_election_constituencies_${state}_${year}`;
 
-    const cachedResult = await redis.get(key);
-    if (cachedResult) {
-      return res.json(cachedResult);
-    }
+    // const cachedResult = await redis.get(key);
+    // if (cachedResult) {
+    //   return res.json(cachedResult);
+    // }
 
     if (!state || !year) {
       return res.status(400).json({
@@ -106,10 +106,12 @@ router.get("/", async (req, res, next) => {
     }
 
     // First, find the election to get its ID
-    const election = await TempElection.findOne({
+    const electionQuery = {
       state: state,
       year: parseInt(year),
-    }).lean();
+    };
+
+    const election = await TempElection.findOne(electionQuery).lean();
 
     if (!election) {
       return res.status(404).json({
@@ -118,14 +120,29 @@ router.get("/", async (req, res, next) => {
       });
     }
 
-    const constituencies = await ElectionConstituency.find({
+    const constituenciesRaw = await ElectionConstituency.find({
       election: election._id,
     })
       .populate({ path: "constituency", select: "-candidates" })
       .lean()
-      .then((results) => results.map((result) => result.constituency));
+      .then((results) => results.map((result) => result.constituency).filter(Boolean));
 
-    redis.set(key, constituencies);
+    // Deduplicate constituencies by _id (fallback to composite key if needed)
+    const seen = new Set();
+    const constituencies = [];
+    for (const c of constituenciesRaw) {
+      const keyId =
+        (c && c._id && c._id.toString()) ||
+        (c && c.state && c.constituencyId != null
+          ? `${c.state}|${c.constituencyId}`
+          : c && c.name);
+      if (!keyId) continue;
+      if (seen.has(keyId)) continue;
+      seen.add(keyId);
+      constituencies.push(c);
+    }
+
+    // redis.set(key, constituencies);
 
     res.json(constituencies);
   } catch (error) {
