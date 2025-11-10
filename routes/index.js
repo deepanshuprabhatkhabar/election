@@ -1697,7 +1697,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 								pipeline: [{ $project: { name: 1, constituencyHindi: 1 } }],
 							},
 						},
-						// Lookup ElectionCandidate info (votesReceived + status)
+						// Lookup ElectionCandidate info (votesReceived + status + constituency)
 						{
 							$lookup: {
 								from: "electioncandidates", // Mongo pluralized form
@@ -1720,11 +1720,141 @@ router.get("/election/hot-candidates", async (req, res) => {
 										$project: {
 											votesReceived: 1,
 											status: 1,
+											constituency: 1,
 											_id: 0,
 										},
 									},
 								],
 								as: "electionStats",
+							},
+						},
+						// Extract constituency ID for the margin calculation lookup
+						{
+							$addFields: {
+								electionStatsObj: { $arrayElemAt: ["$electionStats", 0] },
+							},
+						},
+						{
+							$addFields: {
+								constituencyIdFromStats: {
+									$ifNull: ["$electionStatsObj.constituency", null],
+								},
+							},
+						},
+						// Lookup all candidates in the same constituency to calculate vote margin
+						{
+							$lookup: {
+								from: "electioncandidates",
+								let: {
+									electionId: "$$electionId",
+									constituencyId: "$constituencyIdFromStats",
+									hotCandidateId: "$_id",
+								},
+								pipeline: [
+									{
+										$match: {
+											$expr: {
+												$and: [
+													{ $eq: ["$election", "$$electionId"] },
+													{ $eq: ["$constituency", "$$constituencyId"] },
+												],
+											},
+										},
+									},
+									{
+										$sort: { votesReceived: -1 },
+									},
+									{
+										$project: {
+											candidate: 1,
+											votesReceived: 1,
+											_id: 0,
+										},
+									},
+								],
+								as: "constituencyCandidates",
+							},
+						},
+						// Calculate vote margin
+						{
+							$addFields: {
+								voteMargin: {
+									$cond: {
+										if: { $gt: [{ $size: "$electionStats" }, 0] },
+										then: {
+											$let: {
+												vars: {
+													hotCandidateStats: "$electionStatsObj",
+													sortedCandidates: "$constituencyCandidates",
+												},
+												in: {
+													$cond: {
+														if: { $gt: [{ $size: "$$sortedCandidates" }, 0] },
+														then: {
+															$let: {
+																vars: {
+																	hotCandidateVotes: {
+																		$ifNull: ["$$hotCandidateStats.votesReceived", 0],
+																	},
+																	hotCandidateId: "$_id",
+																	topCandidate: { $arrayElemAt: ["$$sortedCandidates", 0] },
+																	secondCandidate: { $arrayElemAt: ["$$sortedCandidates", 1] },
+																},
+																in: {
+																	$cond: {
+																		if: {
+																			$and: [
+																				{ $ne: ["$$topCandidate", null] },
+																				{
+																					$eq: [
+																						"$$hotCandidateId",
+																						"$$topCandidate.candidate",
+																					],
+																				},
+																			],
+																		},
+																		then: {
+																			// Hot candidate is winning - compare with second highest
+																			margin: {
+																				$subtract: [
+																					"$$hotCandidateVotes",
+																					{
+																						$ifNull: [
+																							"$$secondCandidate.votesReceived",
+																							0,
+																						],
+																					},
+																				],
+																			},
+																			isWinning: true,
+																		},
+																		else: {
+																			// Hot candidate is losing - compare with highest
+																			margin: {
+																				$subtract: [
+																					"$$hotCandidateVotes",
+																					{
+																						$ifNull: [
+																							"$$topCandidate.votesReceived",
+																							0,
+																						],
+																					},
+																				],
+																			},
+																			isWinning: false,
+																		},
+																	},
+																},
+															},
+														},
+														else: null,
+													},
+												},
+											},
+										},
+										else: null,
+									},
+								},
 							},
 						},
 						// Final project
@@ -1735,7 +1865,8 @@ router.get("/election/hot-candidates", async (req, res) => {
 								image: 1,
 								party: { $arrayElemAt: ["$party", 0] },
 								constituency: { $arrayElemAt: ["$constituency", 0] },
-								electionStats: { $arrayElemAt: ["$electionStats", 0] },
+								electionStats: "$electionStatsObj",
+								voteMargin: 1,
 							},
 						},
 					],
@@ -1765,6 +1896,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 									constituencyHindi: "$$candidate.constituency.constituencyHindi",
 								},
 								electionStats: "$$candidate.electionStats",
+								voteMargin: "$$candidate.voteMargin",
 							},
 						},
 					},
