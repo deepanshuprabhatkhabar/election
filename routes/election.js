@@ -162,10 +162,11 @@ async function updateWidgetCaches({ state, year, type, electionId, affectedConst
 
 		// 3) CN widget constituencies: /constituency -> key: widget_cn_election_constituencies_${state}_${year}
 		if (electionId) {
-			const consList = await ConstituencyElectionModel.find({ election: electionId })
-				.populate({ path: "constituency", select: "-candidates" })
-				.lean()
-				.then((results) => results.map((r) => r.constituency));
+			// Use distinct constituency IDs to avoid duplicates in cache
+			const distinctConIds = await ConstituencyElectionModel.distinct("constituency", { election: electionId });
+			const consList = await ConstituencyModel.find({ _id: { $in: distinctConIds } })
+				.select("-candidates")
+				.lean();
 			await redis.set(`widget_cn_election_constituencies_${state}_${year}`, consList);
 			if (type) await redis.set(`widget_cn_election_constituencies_${state}_${year}_${type}`, consList);
 		}
