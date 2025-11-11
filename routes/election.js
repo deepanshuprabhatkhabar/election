@@ -57,6 +57,7 @@ async function updateWidgetCaches({ state, year, type, electionId, affectedConst
 								{
 									party: {
 										party: "$partyResults.partyDetails.party",
+										partyHindi: "$partyResults.partyDetails.partyHindi",
 										color_code: "$partyResults.partyDetails.color_code",
 										party_logo: "$partyResults.partyDetails.party_logo",
 									},
@@ -107,7 +108,7 @@ async function updateWidgetCaches({ state, year, type, electionId, affectedConst
 				{ $match: { election: electionDoc._id } },
 				{ $lookup: { from: "parties", localField: "party", foreignField: "_id", as: "partyData" } },
 				{ $unwind: "$partyData" },
-				{ $project: { _id: 0, partyName: "$partyData.party", seatsWon: "$seatsWon", partyColor: "$partyData.color_code" } },
+				{ $project: { _id: 0, partyName: "$partyData.party", partyHindi: "$partyData.partyHindi", seatsWon: "$seatsWon", partyColor: "$partyData.color_code" } },
 				{ $sort: { seatsWon: -1 } },
 			]);
 
@@ -124,11 +125,14 @@ async function updateWidgetCaches({ state, year, type, electionId, affectedConst
 					$group: {
 						_id: "$constituency._id",
 						constituencyName: { $first: "$constituency.name" },
+						constituencyHindi: { $first: "$constituency.constituencyHindi" },
 						constituencyId: { $first: "$constituency.constituencyId" },
 						candidates: {
 							$push: {
 								name: "$candidate.name",
+								hindiName: "$candidate.hindiName",
 								partyName: "$party.party",
+								partyHindi: "$party.partyHindi",
 								votesReceived: "$votesReceived",
 								status: "$status",
 								partyColor: "$party.color_code",
@@ -137,7 +141,7 @@ async function updateWidgetCaches({ state, year, type, electionId, affectedConst
 						},
 					},
 				},
-				{ $project: { _id: 0, constituencyName: 1, constituencyId: 1, candidates: { $slice: ["$candidates", 2] } } },
+				{ $project: { _id: 0, constituencyName: 1, constituencyHindi: 1, constituencyId: 1, candidates: { $slice: ["$candidates", 2] } } },
 			]);
 
 			const mapPayload = {
@@ -174,7 +178,7 @@ async function updateWidgetCaches({ state, year, type, electionId, affectedConst
 				const canList = await CandidateElectionModel.find({ election: electionId, constituency: affectedConstituencyId })
 					.populate({
 						path: "candidate",
-						populate: { path: "party", select: "party color_code" },
+						populate: { path: "party", select: "party partyHindi color_code" },
 					})
 					.lean()
 					.then((rows) => rows.map((row) => ({ ...row, constituencyStatus: electionCon?.status })));
