@@ -1322,6 +1322,11 @@ thead{
 			}
 
 			function deleteCandidate(candidateId) {
+				// Show confirmation dialog
+				if (!confirm('Are you sure you want to delete this candidate from the election? This action cannot be undone.')) {
+					return; // User cancelled, do nothing
+				}
+
 				const electionId = document.querySelector('input[name="_id"]').value;
 				fetch(`/api/elections/temp-election/candidate/delete/${candidateId}/${electionId}`, {
 					method: 'DELETE',
@@ -1332,7 +1337,7 @@ thead{
 						window.location.reload()
 					}
 				}).catch(err => {
-					alert('Failed to delete party');
+					alert('Failed to delete candidate');
 					window.location.reload()
 				})
 			}
