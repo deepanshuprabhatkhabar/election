@@ -178,7 +178,7 @@ router.get("/cn-list", async (req, res, next) => {
 			constituency: constituency._id,
 		});
 
-		const candidates = await ElectionCandidatesModel.find({
+		const rawCandidates = await ElectionCandidatesModel.find({
 			election: election._id,
 			constituency: constituency._id,
 		})
@@ -194,17 +194,13 @@ router.get("/cn-list", async (req, res, next) => {
 				path: "constituency",
 				select: "name constituencyHindi",
 			})
-			.lean()
-			.then((results) =>
-				results.map((result) => {
-					return { 
-						...result, 
-						constituencyStatus: electionConstituency ? electionConstituency.status : 'ongoing'
-					};
-				}),
-			);
+			.sort({ votesReceived: -1 })
+			.lean();
 
-		// redis.set(key, candidates);
+		const candidates = rawCandidates.map((result) => ({
+			...result,
+			constituencyStatus: electionConstituency ? electionConstituency.status : "ongoing",
+		}));
 
 		res.json(candidates);
 	} catch (error) {
