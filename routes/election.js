@@ -165,7 +165,7 @@ async function updateWidgetCaches({ state, year, type, electionId, affectedConst
 			// Use distinct constituency IDs to avoid duplicates in cache
 			const distinctConIds = await ConstituencyElectionModel.distinct("constituency", { election: electionId });
 			const consList = await ConstituencyModel.find({ _id: { $in: distinctConIds } })
-				.select("-candidates")
+				.select("-candidates").collation({locale: "en", strength: 2}).sort({name: 1})
 				.lean();
 			await redis.set(`widget_cn_election_constituencies_${state}_${year}`, consList);
 			if (type) await redis.set(`widget_cn_election_constituencies_${state}_${year}_${type}`, consList);
