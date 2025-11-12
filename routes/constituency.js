@@ -142,8 +142,13 @@ router.get("/", async (req, res, next) => {
       constituencies.push(c);
     }
 
-    // redis.set(key, constituencies);
+	console.log(constituencies);
 
+    // redis.set(key, constituencies);
+ 
+	constituencies.sort((a, b) => 
+	  a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+	);
     res.json(constituencies);
   } catch (error) {
     next(error);
