@@ -396,7 +396,22 @@ async function calculateAndUpdateSeats(electionId, constituencyId) {
 		);
 
 		if (!winningCandidate || maxVotes === 0) {
-			console.log("No clear winner or no votes, returning");
+			console.log(
+				"No clear winner or no votes, clearing statuses and recalculating seats",
+			);
+
+			// Clear candidate statuses for this constituency when no leader is determined
+			await Promise.all(
+				candidatesInConstituency.map((c) =>
+					CandidateElectionModel.updateOne(
+						{ _id: c._id },
+						{ $unset: { status: "" } },
+					),
+				),
+			);
+
+			// Recalculate seats so previously assigned wins are removed
+			await recalculateAllSeatsForElection(electionId);
 			return;
 		}
 
