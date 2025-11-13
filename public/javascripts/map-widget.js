@@ -14,7 +14,7 @@ class MapWidget {
 
   async loadDependencies() {
     // Base URL for resources
-    const baseUrl = "https://election-stage.prabhatkhabar.com/";
+    const baseUrl = "https://election.prabhatkhabar.com/";
 
     // Load CSS files
     const cssFiles = [
@@ -2956,7 +2956,7 @@ class MapWidget {
 
     try {
       const response = await fetch(
-        `https://election-stage.prabhatkhabar.com/elections/map/top-candidates?state=${stateName}&year=${clickedYear}`
+        `https://election.prabhatkhabar.com/elections/map/top-candidates?state=${stateName}&year=${clickedYear}`
       );
       const data = await response.json();
 
@@ -2975,7 +2975,7 @@ class MapWidget {
 
     try {
       const result = await fetch(
-        `https://election-stage.prabhatkhabar.com/election/years/Bihar`
+        `https://election.prabhatkhabar.com/election/years/Bihar`
       );
       const allYears = (await result.json()).data.availableYears;
 
