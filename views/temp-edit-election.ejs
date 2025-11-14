@@ -1723,28 +1723,6 @@ thead{
 					}
 
 					// Filter each row
-					// rows.forEach(row => {
-					// 	const nameCell = row.cells[0];
-					// 	const partyCell = row.cells[1];
-					// 	const constituencyCell = row.cells[2];
-
-					// 	const name = nameCell.textContent.toLowerCase();
-					// 	const party = partyCell.textContent.toLowerCase();
-					// 	const constituency = constituencyCell.textContent.toLowerCase();
-
-					// 	// Check if row matches all active filters
-					// 	const matchesSearch = !searchTerm || name.includes(searchTerm);
-					// 	const matchesParty = !partyFilter || party.includes(partyFilter.toLowerCase());
-					// 	const matchesConstituency = !constituencyFilter ||
-					// 		constituency.includes(constituencyFilter.toLowerCase());
-
-					// 	// Show or hide the row
-					// 	if (matchesSearch && matchesParty && matchesConstituency) {
-					// 		row.style.display = '';
-					// 	} else {
-					// 		row.style.display = 'none';
-					// 	}
-					// });
 					rows.forEach(row => {
 						const nameCell = row.cells[0];
 						const partyCell = row.cells[1];
@@ -1752,31 +1730,21 @@ thead{
 
 						const name = nameCell.textContent.toLowerCase();
 						const party = partyCell.textContent.toLowerCase();
+						const constituency = constituencyCell.textContent.toLowerCase();
 
-						// Clean constituency value (remove " ( ongoing )")
-						const constituencyRaw = constituencyCell.textContent.toLowerCase();
-						const constituencyClean = constituencyRaw.split("(")[0].trim();
+						// Check if row matches all active filters
+						const matchesSearch = !searchTerm || name.includes(searchTerm);
+						const matchesParty = !partyFilter || party.includes(partyFilter.toLowerCase());
+						const matchesConstituency = !constituencyFilter ||
+							constituency.includes(constituencyFilter.toLowerCase());
 
-						const search = searchTerm.toLowerCase();
-						const partyFilterClean = partyFilter.toLowerCase();
-						const constituencyFilterClean = constituencyFilter.toLowerCase();
-
-						// Apply filters
-						const matchesSearch = !search || name.includes(search);
-
-						const matchesParty =
-							!partyFilterClean || party === partyFilterClean;
-
-						const matchesConstituency =
-							!constituencyFilterClean || constituencyClean === constituencyFilterClean;
-
-						// Show or hide
-						row.style.display =
-							(matchesSearch && matchesParty && matchesConstituency)
-								? ""
-								: "none";
+						// Show or hide the row
+						if (matchesSearch && matchesParty && matchesConstituency) {
+							row.style.display = '';
+						} else {
+							row.style.display = 'none';
+						}
 					});
-
 				}
 
 				// Function to clear all filters
