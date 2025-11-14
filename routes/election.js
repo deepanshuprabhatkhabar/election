@@ -1082,16 +1082,16 @@ router.put("/temp-election/candidate/update", async (req, res) => {
 		}
 
 		// recompute and update widget caches
-		if (redisKeys) {
-			const { state, year, type } = redisKeys;
-			await updateWidgetCaches({
-				state,
-				year,
-				type,
-				electionId: election,
-				affectedConstituencyId: updatedDocument.constituency,
-			});
-		}
+		// if (redisKeys) {
+		// 	const { state, year, type } = redisKeys;
+		// 	await updateWidgetCaches({
+		// 		state,
+		// 		year,
+		// 		type,
+		// 		electionId: election,
+		// 		affectedConstituencyId: updatedDocument.constituency,
+		// 	});
+		// }
 
 		return res.status(200).json(updatedDocument);
 	} catch (error) {
@@ -1152,16 +1152,16 @@ router.put("/temp-election/candidates/update-all", async (req, res) => {
 		}
 
 		// Recompute and update widget caches
-		if (redisKeys) {
-			const { state, year, type } = redisKeys;
-			await updateWidgetCaches({
-				state,
-				year,
-				type,
-				electionId: election,
-				// Multiple constituencies updated; leave affectedConstituencyId undefined (we updated map/result/cons lists)
-			});
-		}
+		// if (redisKeys) {
+		// 	const { state, year, type } = redisKeys;
+		// 	await updateWidgetCaches({
+		// 		state,
+		// 		year,
+		// 		type,
+		// 		electionId: election,
+		// 		// Multiple constituencies updated; leave affectedConstituencyId undefined (we updated map/result/cons lists)
+		// 	});
+		// }
 
 		return res.status(200).json(updatedDocuments);
 	} catch (error) {
