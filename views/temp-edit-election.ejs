@@ -1723,6 +1723,28 @@ thead{
 					}
 
 					// Filter each row
+					// rows.forEach(row => {
+					// 	const nameCell = row.cells[0];
+					// 	const partyCell = row.cells[1];
+					// 	const constituencyCell = row.cells[2];
+
+					// 	const name = nameCell.textContent.toLowerCase();
+					// 	const party = partyCell.textContent.toLowerCase();
+					// 	const constituency = constituencyCell.textContent.toLowerCase();
+
+					// 	// Check if row matches all active filters
+					// 	const matchesSearch = !searchTerm || name.includes(searchTerm);
+					// 	const matchesParty = !partyFilter || party.includes(partyFilter.toLowerCase());
+					// 	const matchesConstituency = !constituencyFilter ||
+					// 		constituency.includes(constituencyFilter.toLowerCase());
+
+					// 	// Show or hide the row
+					// 	if (matchesSearch && matchesParty && matchesConstituency) {
+					// 		row.style.display = '';
+					// 	} else {
+					// 		row.style.display = 'none';
+					// 	}
+					// });
 					rows.forEach(row => {
 						const nameCell = row.cells[0];
 						const partyCell = row.cells[1];
@@ -1730,21 +1752,36 @@ thead{
 
 						const name = nameCell.textContent.toLowerCase();
 						const party = partyCell.textContent.toLowerCase();
-						const constituency = constituencyCell.textContent.toLowerCase();
 
-						// Check if row matches all active filters
-						const matchesSearch = !searchTerm || name.includes(searchTerm);
-						const matchesParty = !partyFilter || party.includes(partyFilter.toLowerCase());
-						const matchesConstituency = !constituencyFilter ||
-							constituency.includes(constituencyFilter.toLowerCase());
+						// Raw constituency text
+						let constituencyRaw = constituencyCell.textContent.toLowerCase().trim();
 
-						// Show or hide the row
-						if (matchesSearch && matchesParty && matchesConstituency) {
-							row.style.display = '';
-						} else {
-							row.style.display = 'none';
-						}
+						// Remove trailing status: "( ongoing )", "( completed )", etc.
+						constituencyRaw = constituencyRaw.replace(/\(\s*ongoing\s*\)$/g, "").trim();
+						constituencyRaw = constituencyRaw.replace(/\(\s*completed\s*\)$/g, "").trim();
+
+						const constituencyClean = constituencyRaw; // keep full name: "kalyanpur (samastipur)"
+
+						const search = searchTerm.toLowerCase();
+						const partyFilterClean = partyFilter.toLowerCase();
+						const constituencyFilterClean = constituencyFilter.toLowerCase();
+
+						// Apply filters
+						const matchesSearch = !search || name.includes(search);
+
+						const matchesParty =
+							!partyFilterClean || party === partyFilterClean;
+
+						const matchesConstituency =
+							!constituencyFilterClean || constituencyClean === constituencyFilterClean;
+
+						row.style.display =
+							(matchesSearch && matchesParty && matchesConstituency)
+								? ""
+								: "none";
 					});
+
+
 				}
 
 				// Function to clear all filters
