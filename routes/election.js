@@ -1191,15 +1191,15 @@ router.put("/temp-election/party/update", async (req, res) => {
 		const { state, year, type } = redisKeys;
 
 		// Recompute and update widget caches
-		if (redisKeys) {
-			const { state, year, type } = redisKeys;
-			await updateWidgetCaches({
-				state,
-				year,
-				type,
-				electionId: election,
-			});
-		}
+		// if (redisKeys) {
+		// 	const { state, year, type } = redisKeys;
+		// 	await updateWidgetCaches({
+		// 		state,
+		// 		year,
+		// 		type,
+		// 		electionId: election,
+		// 	});
+		// }
 
 		return res.status(200).json(updatedDocument);
 	} catch (error) {
