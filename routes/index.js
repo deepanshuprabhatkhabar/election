@@ -1647,28 +1647,301 @@ router.get("/elections/map/top-candidates", async (req, res) => {
 	}
 });
 
+// router.get("/election/hot-candidates", async (req, res) => {
+// 	try {
+// 		const { state, year } = req.query;
+
+// 		// const key = `widget_bihar_hot_candidate_${state}_${year}`;
+// 		// const cachedResults = await redis.get(key);
+// 		//
+// 		// if (cachedResults) {
+// 		// 	return res.json(cachedResults);
+// 		// }
+
+// 		const result = await TempElection.aggregate([
+// 			// Match the election document for the given state and year
+// 			{ $match: { state: state, year: Number(year) } },
+
+// 			// Lookup candidates with population
+// 			{
+// 				$lookup: {
+// 					from: "candidates",
+// 					let: {
+// 						candidateIds: "$electionInfo.candidates",
+// 						electionId: "$_id", // pass election _id
+// 					},
+// 					pipeline: [
+// 						{
+// 							$match: {
+// 								$expr: { $in: ["$_id", "$$candidateIds"] },
+// 								hotCandidate: true,
+// 							},
+// 						},
+// 						// Populate party
+// 						{
+// 							$lookup: {
+// 								from: "parties",
+// 								localField: "party",
+// 								foreignField: "_id",
+// 								as: "party",
+// 								pipeline: [{ $project: { party: 1, color_code: 1, partyHindi: 1 } }],
+// 							},
+// 						},
+// 						// Populate constituency
+// 						{
+// 							$lookup: {
+// 								from: "constituencies",
+// 								localField: "constituency",
+// 								foreignField: "_id",
+// 								as: "constituency",
+// 								pipeline: [{ $project: { name: 1, constituencyHindi: 1 } }],
+// 							},
+// 						},
+// 						// Lookup ElectionCandidate info (votesReceived + status + constituency)
+// 						{
+// 							$lookup: {
+// 								from: "electioncandidates", // Mongo pluralized form
+// 								let: {
+// 									candidateId: "$_id",
+// 									electionId: "$$electionId",
+// 								},
+// 								pipeline: [
+// 									{
+// 										$match: {
+// 											$expr: {
+// 												$and: [
+// 													{ $eq: ["$candidate", "$$candidateId"] },
+// 													{ $eq: ["$election", "$$electionId"] },
+// 												],
+// 											},
+// 										},
+// 									},
+// 									{
+// 										$project: {
+// 											votesReceived: 1,
+// 											status: 1,
+// 											constituency: 1,
+// 											_id: 0,
+// 										},
+// 									},
+// 								],
+// 								as: "electionStats",
+// 							},
+// 						},
+// 						// Extract constituency ID for the margin calculation lookup
+// 						{
+// 							$addFields: {
+// 								electionStatsObj: { $arrayElemAt: ["$electionStats", 0] },
+// 							},
+// 						},
+// 						{
+// 							$addFields: {
+// 								constituencyIdFromStats: {
+// 									$ifNull: ["$electionStatsObj.constituency", null],
+// 								},
+// 							},
+// 						},
+// 						// Lookup all candidates in the same constituency to calculate vote margin
+// 						{
+// 							$lookup: {
+// 								from: "electioncandidates",
+// 								let: {
+// 									electionId: "$$electionId",
+// 									constituencyId: "$constituencyIdFromStats",
+// 									hotCandidateId: "$_id",
+// 								},
+// 								pipeline: [
+// 									{
+// 										$match: {
+// 											$expr: {
+// 												$and: [
+// 													{ $eq: ["$election", "$$electionId"] },
+// 													{ $eq: ["$constituency", "$$constituencyId"] },
+// 												],
+// 											},
+// 										},
+// 									},
+// 									{
+// 										$sort: { votesReceived: -1 },
+// 									},
+// 									{
+// 										$project: {
+// 											candidate: 1,
+// 											votesReceived: 1,
+// 											_id: 0,
+// 										},
+// 									},
+// 								],
+// 								as: "constituencyCandidates",
+// 							},
+// 						},
+// 						// Calculate vote margin
+// 						{
+// 							$addFields: {
+// 								voteMargin: {
+// 									$cond: {
+// 										if: { $gt: [{ $size: "$electionStats" }, 0] },
+// 										then: {
+// 											$let: {
+// 												vars: {
+// 													hotCandidateStats: "$electionStatsObj",
+// 													sortedCandidates: "$constituencyCandidates",
+// 												},
+// 												in: {
+// 													$cond: {
+// 														if: { $gt: [{ $size: "$$sortedCandidates" }, 0] },
+// 														then: {
+// 															$let: {
+// 																vars: {
+// 																	hotCandidateVotes: {
+// 																		$ifNull: ["$$hotCandidateStats.votesReceived", 0],
+// 																	},
+// 																	hotCandidateId: "$_id",
+// 																	topCandidate: { $arrayElemAt: ["$$sortedCandidates", 0] },
+// 																	secondCandidate: { $arrayElemAt: ["$$sortedCandidates", 1] },
+// 																},
+// 																in: {
+// 																	$cond: {
+// 																		if: {
+// 																			$and: [
+// 																				{ $ne: ["$$topCandidate", null] },
+// 																				{
+// 																					$eq: [
+// 																						"$$hotCandidateId",
+// 																						"$$topCandidate.candidate",
+// 																					],
+// 																				},
+// 																			],
+// 																		},
+// 																		then: {
+// 																			// Hot candidate is winning - compare with second highest
+// 																			margin: {
+// 																				$subtract: [
+// 																					"$$hotCandidateVotes",
+// 																					{
+// 																						$ifNull: [
+// 																							"$$secondCandidate.votesReceived",
+// 																							0,
+// 																						],
+// 																					},
+// 																				],
+// 																			},
+// 																			isWinning: true,
+// 																		},
+// 																		else: {
+// 																			// Hot candidate is losing - compare with highest
+// 																			margin: {
+// 																				$subtract: [
+// 																					"$$hotCandidateVotes",
+// 																					{
+// 																						$ifNull: [
+// 																							"$$topCandidate.votesReceived",
+// 																							0,
+// 																						],
+// 																					},
+// 																				],
+// 																			},
+// 																			isWinning: false,
+// 																		},
+// 																	},
+// 																},
+// 															},
+// 														},
+// 														else: null,
+// 													},
+// 												},
+// 											},
+// 										},
+// 										else: null,
+// 									},
+// 								},
+// 							},
+// 						},
+// 						// Final project
+// 						{
+// 							$project: {
+// 								name: 1,
+// 								hindiName: 1,
+// 								image: 1,
+// 								party: { $arrayElemAt: ["$party", 0] },
+// 								constituency: { $arrayElemAt: ["$constituency", 0] },
+// 								electionStats: "$electionStatsObj",
+// 								voteMargin: 1,
+// 							},
+// 						},
+// 					],
+// 					as: "hotCandidates",
+// 				},
+// 			},
+
+// 			// Final projection - use $map to transform hotCandidates array
+// 			{
+// 				$project: {
+// 					_id: 0,
+// 					hotCandidates: {
+// 						$map: {
+// 							input: "$hotCandidates",
+// 							as: "candidate",
+// 							in: {
+// 								name: "$$candidate.name",
+// 								hindiName: "$$candidate.hindiName",
+// 								image: "$$candidate.image",
+// 								party: {
+// 									party: "$$candidate.party.party",
+// 									partyHindi: "$$candidate.party.partyHindi",
+// 									color_code: "$$candidate.party.color_code",
+// 								},
+// 								constituency: {
+// 									name: "$$candidate.constituency.name",
+// 									constituencyHindi: "$$candidate.constituency.constituencyHindi",
+// 								},
+// 								electionStats: "$$candidate.electionStats",
+// 								voteMargin: "$$candidate.voteMargin",
+// 							},
+// 						},
+// 					},
+// 				},
+// 			},
+// 		]);
+
+// 		if (!result.length) {
+// 			return res.status(404).json({
+// 				success: false,
+// 				message: "Election not found",
+// 			});
+// 		}
+// 		// redis.set(key, {
+// 		// 	success: true,
+// 		// 	data: result[0].hotCandidates,
+// 		// });
+
+// 		return res.json({
+// 			success: true,
+// 			data: result[0].hotCandidates,
+// 		});
+// 	} catch (error) {
+// 		console.error("Error:", error);
+// 		res.status(500).json({
+// 			success: false,
+// 			message: "Internal server error",
+// 		});
+// 	}
+// });
+
 router.get("/election/hot-candidates", async (req, res) => {
 	try {
+		console.log('something')
 		const { state, year } = req.query;
 
-		// const key = `widget_bihar_hot_candidate_${state}_${year}`;
-		// const cachedResults = await redis.get(key);
-		//
-		// if (cachedResults) {
-		// 	return res.json(cachedResults);
-		// }
-
 		const result = await TempElection.aggregate([
-			// Match the election document for the given state and year
 			{ $match: { state: state, year: Number(year) } },
 
-			// Lookup candidates with population
 			{
 				$lookup: {
 					from: "candidates",
 					let: {
 						candidateIds: "$electionInfo.candidates",
-						electionId: "$_id", // pass election _id
+						electionId: "$_id",
 					},
 					pipeline: [
 						{
@@ -1677,7 +1950,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 								hotCandidate: true,
 							},
 						},
-						// Populate party
+
 						{
 							$lookup: {
 								from: "parties",
@@ -1687,7 +1960,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 								pipeline: [{ $project: { party: 1, color_code: 1, partyHindi: 1 } }],
 							},
 						},
-						// Populate constituency
+
 						{
 							$lookup: {
 								from: "constituencies",
@@ -1697,10 +1970,13 @@ router.get("/election/hot-candidates", async (req, res) => {
 								pipeline: [{ $project: { name: 1, constituencyHindi: 1 } }],
 							},
 						},
-						// Lookup ElectionCandidate info (votesReceived + status + constituency)
+
+						//
+						// LOOKUP ELECTIONCANDIDATES
+						//
 						{
 							$lookup: {
-								from: "electioncandidates", // Mongo pluralized form
+								from: "electioncandidates",
 								let: {
 									candidateId: "$_id",
 									electionId: "$$electionId",
@@ -1728,7 +2004,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 								as: "electionStats",
 							},
 						},
-						// Extract constituency ID for the margin calculation lookup
+
 						{
 							$addFields: {
 								electionStatsObj: { $arrayElemAt: ["$electionStats", 0] },
@@ -1741,7 +2017,44 @@ router.get("/election/hot-candidates", async (req, res) => {
 								},
 							},
 						},
-						// Lookup all candidates in the same constituency to calculate vote margin
+
+						//
+						// ⭐ NEW LOOKUP: electionconstituencies (status)
+						//
+						{
+							$lookup: {
+								from: "electionconstituencies",
+								let: {
+									electionId: "$$electionId",
+									constituencyId: "$constituencyIdFromStats",
+								},
+								pipeline: [
+									{
+										$match: {
+											$expr: {
+												$and: [
+													{ $eq: ["$election", "$$electionId"] },
+													{ $eq: ["$constituency", "$$constituencyId"] },
+												],
+											},
+										},
+									},
+									{ $project: { status: 1, _id: 0 } },
+								],
+								as: "electionConstituencyStatus",
+							},
+						},
+
+						{
+							$addFields: {
+								electionConstituencyStatus: {
+									$arrayElemAt: ["$electionConstituencyStatus", 0],
+								},
+							},
+						},
+						// ⭐ END OF NEW LOOKUP
+						//
+
 						{
 							$lookup: {
 								from: "electioncandidates",
@@ -1761,9 +2074,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 											},
 										},
 									},
-									{
-										$sort: { votesReceived: -1 },
-									},
+									{ $sort: { votesReceived: -1 } },
 									{
 										$project: {
 											candidate: 1,
@@ -1775,7 +2086,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 								as: "constituencyCandidates",
 							},
 						},
-						// Calculate vote margin
+
 						{
 							$addFields: {
 								voteMargin: {
@@ -1814,7 +2125,6 @@ router.get("/election/hot-candidates", async (req, res) => {
 																			],
 																		},
 																		then: {
-																			// Hot candidate is winning - compare with second highest
 																			margin: {
 																				$subtract: [
 																					"$$hotCandidateVotes",
@@ -1829,7 +2139,6 @@ router.get("/election/hot-candidates", async (req, res) => {
 																			isWinning: true,
 																		},
 																		else: {
-																			// Hot candidate is losing - compare with highest
 																			margin: {
 																				$subtract: [
 																					"$$hotCandidateVotes",
@@ -1857,7 +2166,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 								},
 							},
 						},
-						// Final project
+
 						{
 							$project: {
 								name: 1,
@@ -1867,6 +2176,9 @@ router.get("/election/hot-candidates", async (req, res) => {
 								constituency: { $arrayElemAt: ["$constituency", 0] },
 								electionStats: "$electionStatsObj",
 								voteMargin: 1,
+								//
+								// ⭐ INCLUDE NEW FIELD
+								electionConstituencyStatus: "$electionConstituencyStatus.status",
 							},
 						},
 					],
@@ -1874,7 +2186,6 @@ router.get("/election/hot-candidates", async (req, res) => {
 				},
 			},
 
-			// Final projection - use $map to transform hotCandidates array
 			{
 				$project: {
 					_id: 0,
@@ -1897,6 +2208,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 								},
 								electionStats: "$$candidate.electionStats",
 								voteMargin: "$$candidate.voteMargin",
+								electionConstituencyStatus: "$$candidate.electionConstituencyStatus",
 							},
 						},
 					},
@@ -1910,10 +2222,6 @@ router.get("/election/hot-candidates", async (req, res) => {
 				message: "Election not found",
 			});
 		}
-		// redis.set(key, {
-		// 	success: true,
-		// 	data: result[0].hotCandidates,
-		// });
 
 		return res.json({
 			success: true,
@@ -1927,6 +2235,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 		});
 	}
 });
+
 
 router.get("/election/hot-candidate/result", async (req, res) => {
 	try {
