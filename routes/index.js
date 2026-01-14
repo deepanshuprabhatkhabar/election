@@ -27,6 +27,7 @@ async function getCandidateElectionDetails(
 	const pipeline = [
 		{ $match: { election: new mongoose.Types.ObjectId(electionId) } },
 
+		// Lookup candidate info
 		{
 			$lookup: {
 				from: "candidates",
@@ -37,12 +38,12 @@ async function getCandidateElectionDetails(
 		},
 		{ $unwind: "$candidateInfo" },
 
-		// Add user-specific filtering if needed
+		// Optional user filter (based on the link constituency, not candidate array)
 		...(userType === "user"
 			? [
 				{
 					$match: {
-						"candidateInfo.constituency": {
+						constituency: {
 							$in: allowedConstituencies.map((id) =>
 								typeof id === "string" ? new mongoose.Types.ObjectId(id) : id,
 							),
@@ -52,18 +53,18 @@ async function getCandidateElectionDetails(
 			]
 			: []),
 
-		// Lookup constituency data
+		// Lookup constituency info using the election candidate's constituency reference
 		{
 			$lookup: {
 				from: "constituencies",
-				localField: "candidateInfo.constituency",
+				localField: "constituency",
 				foreignField: "_id",
 				as: "constituencyInfo",
 			},
 		},
 		{ $unwind: "$constituencyInfo" },
 
-		// Lookup party data
+		// Lookup party info
 		{
 			$lookup: {
 				from: "parties",
@@ -74,7 +75,7 @@ async function getCandidateElectionDetails(
 		},
 		{ $unwind: { path: "$partyInfo", preserveNullAndEmptyArrays: true } },
 
-		// Lookup votes from electioncandidates
+		// Lookup votes info
 		{
 			$lookup: {
 				from: "electioncandidates",
@@ -92,29 +93,20 @@ async function getCandidateElectionDetails(
 							},
 						},
 					},
-					{
-						$project: {
-							votesReceived: 1,
-						},
-					},
+					{ $project: { votesReceived: 1 } },
 				],
 				as: "voteInfo",
 			},
 		},
-		{
-			$unwind: {
-				path: "$voteInfo",
-				preserveNullAndEmptyArrays: true,
-			},
-		},
+		{ $unwind: { path: "$voteInfo", preserveNullAndEmptyArrays: true } },
 
-		// Fixed lookup for election constituencies - removed $toObjectId conversion
+		// Lookup constituency election status (one per constituency now)
 		{
 			$lookup: {
 				from: "electionconstituencies",
 				let: {
 					electionId: new mongoose.Types.ObjectId(electionId),
-					constituencyId: "$candidateInfo.constituency", // Directly use the field as it's already an ObjectId
+					constituencyId: "$constituency",
 				},
 				pipeline: [
 					{
@@ -127,18 +119,20 @@ async function getCandidateElectionDetails(
 							},
 						},
 					},
+					{ $project: { status: 1, _id: 0 } },
 				],
 				as: "constituencyElectionStatus",
 			},
 		},
 		{
-			$unwind: {
-				path: "$constituencyElectionStatus",
-				preserveNullAndEmptyArrays: true,
+			$addFields: {
+				constituencyElectionStatus: {
+					$arrayElemAt: ["$constituencyElectionStatus", 0],
+				},
 			},
 		},
 
-		// Project the final structure with votesReceived
+		// Final projection
 		{
 			$project: {
 				_id: 1,
@@ -148,16 +142,10 @@ async function getCandidateElectionDetails(
 					name: "$candidateInfo.name",
 					constituency: "$constituencyInfo",
 					party: "$partyInfo",
-					votesReceived: {
-						$ifNull: ["$voteInfo.votesReceived", 0],
-					},
+					votesReceived: { $ifNull: ["$voteInfo.votesReceived", 0] },
 				},
 				constituencyStatus: {
-					$cond: {
-						if: { $ifNull: ["$constituencyElectionStatus", false] },
-						then: "$constituencyElectionStatus.status",
-						else: "unknown",
-					},
+					$ifNull: ["$constituencyElectionStatus.status", "unknown"],
 				},
 			},
 		},
@@ -400,9 +388,49 @@ router.get(
 			if (!election) {
 				return res.status(404).send("Election not found");
 			}
-			const electionConstituencies = await ElectionConstituencyModel.find({
-				election: electionId,
-			}).populate("constituency");
+			// Fetch constituencies and deduplicate by constituency ID
+			// Using aggregation to group by constituency and keep only one record per constituency
+			// This handles cases where duplicates may already exist in the database
+			const electionIdObj = mongoose.Types.ObjectId.isValid(electionId) 
+				? new mongoose.Types.ObjectId(electionId) 
+				: electionId;
+				
+			const electionConstituenciesRaw = await ElectionConstituencyModel.aggregate([
+				{ $match: { election: electionIdObj } },
+				{
+					$group: {
+						_id: "$constituency",
+						docId: { $first: "$_id" },
+						election: { $first: "$election" },
+						status: { $first: "$status" },
+					},
+				},
+				{
+					$lookup: {
+						from: "constituencies",
+						localField: "_id",
+						foreignField: "_id",
+						as: "constituency",
+					},
+				},
+				{ $unwind: "$constituency" },
+				{
+					$project: {
+						_id: "$docId",
+						election: 1,
+						constituency: 1,
+						status: 1,
+					},
+				},
+			]);
+
+			// Transform to match the expected structure with populated constituency
+			const electionConstituencies = electionConstituenciesRaw.map((item) => ({
+				_id: item._id,
+				election: item.election,
+				constituency: item.constituency,
+				status: item.status,
+			}));
 
 			let partyElectionDetails;
 			let candidateElectionDetails;
@@ -459,6 +487,16 @@ router.get(
 			const allCandidatesList = await Candidate.find(candidatesQuery, "name")
 				.populate("party", "party")
 				.populate("constituency", "name");
+
+			candidateElectionDetails.sort((firstCan, secondCan) => {
+				return (
+					secondCan.candidate.votesReceived - firstCan.candidate.votesReceived
+				);
+			});
+
+			candidateElectionDetails.sort((firstCan, secondCan) => {
+				secondCan.candidate.votesReceived - firstCan.candidate.votesReceived;
+			});
 
 			res.render("temp-edit-election.ejs", {
 				election,
@@ -991,6 +1029,8 @@ router.get(
 	isAdmin,
 	async function(req, res, next) {
 		try {
+			console.log("This is user role", req.userRole);
+
 			const constituencies = await Constituency.find().sort({ name: 1 });
 			const parties = await Party.find();
 
@@ -1012,6 +1052,7 @@ router.get(
 					constituencies,
 					parties,
 					selectedCons: req.query.cons, // Pass selected constituency name to the template
+					userRole: req.userRole,
 				});
 			}
 
@@ -1301,7 +1342,6 @@ router.get("/election/years/:state", async (req, res) => {
 			});
 		}
 
-		redis.set;
 
 		res.json({
 			success: true,
@@ -1327,11 +1367,11 @@ router.get("/elections/state-elections", async (req, res) => {
 			return res.status(400).json({ message: "State parameter is required" });
 		}
 
-		const cachedResults = await redis.get("widget_election_widget");
+		// const cachedResults = await redis.get("widget_election_widget");
 
-		if (cachedResults) {
-			return res.json(cachedResults);
-		}
+		// if (cachedResults) {
+		// 	return res.json(cachedResults);
+		// }
 
 		const results = await TempElection.aggregate([
 			// Match elections for the requested state
@@ -1388,6 +1428,7 @@ router.get("/elections/state-elections", async (req, res) => {
 								{
 									party: {
 										party: "$partyResults.partyDetails.party",
+										partyHindi: "$partyResults.partyDetails.partyHindi",
 										color_code: "$partyResults.partyDetails.color_code",
 										party_logo: "$partyResults.partyDetails.party_logo",
 									},
@@ -1445,7 +1486,7 @@ router.get("/elections/state-elections", async (req, res) => {
 				.json({ message: "No elections found for the specified state" });
 		}
 
-		redis.set("widget_election_widget", results);
+		// redis.set("widget_election_widget", results);
 
 		res.json(results);
 	} catch (error) {
@@ -1478,14 +1519,14 @@ router.get("/elections/map/top-candidates", async (req, res) => {
 			year: parseInt(year),
 		}).lean();
 
-		const type = election.electionType;
-
 		if (!election) {
 			return res.status(404).json({
 				success: false,
 				message: "Election not found",
 			});
 		}
+
+		const type = election.electionType;
 
 		// Get all participating parties first
 		const allParties = await PartyElectionModel.aggregate([
@@ -1503,6 +1544,7 @@ router.get("/elections/map/top-candidates", async (req, res) => {
 				$project: {
 					_id: 0,
 					partyName: "$partyData.party",
+					partyHindi: "$partyData.partyHindi",
 					seatsWon: "$seatsWon",
 					partyColor: "$partyData.color_code",
 				},
@@ -1545,15 +1587,19 @@ router.get("/elections/map/top-candidates", async (req, res) => {
 				$group: {
 					_id: "$constituency._id",
 					constituencyName: { $first: "$constituency.name" },
+					constituencyHindi: { $first: "$constituency.constituencyHindi" },
 					constituencyId: { $first: "$constituency.constituencyId" },
 
 					candidates: {
 						$push: {
 							name: "$candidate.name",
+							hindiName: "$candidate.hindiName",
 							partyName: "$party.party",
+							partyHindi: "$party.partyHindi",
 							votesReceived: "$votesReceived",
 							status: "$status",
 							partyColor: "$party.color_code",
+							partyLogo: "$party.party_logo",
 						},
 					},
 				},
@@ -1562,6 +1608,7 @@ router.get("/elections/map/top-candidates", async (req, res) => {
 				$project: {
 					_id: 0,
 					constituencyName: 1,
+					constituencyHindi: 1,
 					constituencyId: 1,
 					candidates: { $slice: ["$candidates", 2] },
 				},
@@ -1600,26 +1647,302 @@ router.get("/elections/map/top-candidates", async (req, res) => {
 	}
 });
 
+// router.get("/election/hot-candidates", async (req, res) => {
+// 	try {
+// 		const { state, year } = req.query;
+
+// 		// const key = `widget_bihar_hot_candidate_${state}_${year}`;
+// 		// const cachedResults = await redis.get(key);
+// 		//
+// 		// if (cachedResults) {
+// 		// 	return res.json(cachedResults);
+// 		// }
+
+// 		const result = await TempElection.aggregate([
+// 			// Match the election document for the given state and year
+// 			{ $match: { state: state, year: Number(year) } },
+
+// 			// Lookup candidates with population
+// 			{
+// 				$lookup: {
+// 					from: "candidates",
+// 					let: {
+// 						candidateIds: "$electionInfo.candidates",
+// 						electionId: "$_id", // pass election _id
+// 					},
+// 					pipeline: [
+// 						{
+// 							$match: {
+// 								$expr: { $in: ["$_id", "$$candidateIds"] },
+// 								hotCandidate: true,
+// 							},
+// 						},
+// 						// Populate party
+// 						{
+// 							$lookup: {
+// 								from: "parties",
+// 								localField: "party",
+// 								foreignField: "_id",
+// 								as: "party",
+// 								pipeline: [{ $project: { party: 1, color_code: 1, partyHindi: 1 } }],
+// 							},
+// 						},
+// 						// Populate constituency
+// 						{
+// 							$lookup: {
+// 								from: "constituencies",
+// 								localField: "constituency",
+// 								foreignField: "_id",
+// 								as: "constituency",
+// 								pipeline: [{ $project: { name: 1, constituencyHindi: 1 } }],
+// 							},
+// 						},
+// 						// Lookup ElectionCandidate info (votesReceived + status + constituency)
+// 						{
+// 							$lookup: {
+// 								from: "electioncandidates", // Mongo pluralized form
+// 								let: {
+// 									candidateId: "$_id",
+// 									electionId: "$$electionId",
+// 								},
+// 								pipeline: [
+// 									{
+// 										$match: {
+// 											$expr: {
+// 												$and: [
+// 													{ $eq: ["$candidate", "$$candidateId"] },
+// 													{ $eq: ["$election", "$$electionId"] },
+// 												],
+// 											},
+// 										},
+// 									},
+// 									{
+// 										$project: {
+// 											votesReceived: 1,
+// 											status: 1,
+// 											constituency: 1,
+// 											_id: 0,
+// 										},
+// 									},
+// 								],
+// 								as: "electionStats",
+// 							},
+// 						},
+// 						// Extract constituency ID for the margin calculation lookup
+// 						{
+// 							$addFields: {
+// 								electionStatsObj: { $arrayElemAt: ["$electionStats", 0] },
+// 							},
+// 						},
+// 						{
+// 							$addFields: {
+// 								constituencyIdFromStats: {
+// 									$ifNull: ["$electionStatsObj.constituency", null],
+// 								},
+// 							},
+// 						},
+// 						// Lookup all candidates in the same constituency to calculate vote margin
+// 						{
+// 							$lookup: {
+// 								from: "electioncandidates",
+// 								let: {
+// 									electionId: "$$electionId",
+// 									constituencyId: "$constituencyIdFromStats",
+// 									hotCandidateId: "$_id",
+// 								},
+// 								pipeline: [
+// 									{
+// 										$match: {
+// 											$expr: {
+// 												$and: [
+// 													{ $eq: ["$election", "$$electionId"] },
+// 													{ $eq: ["$constituency", "$$constituencyId"] },
+// 												],
+// 											},
+// 										},
+// 									},
+// 									{
+// 										$sort: { votesReceived: -1 },
+// 									},
+// 									{
+// 										$project: {
+// 											candidate: 1,
+// 											votesReceived: 1,
+// 											_id: 0,
+// 										},
+// 									},
+// 								],
+// 								as: "constituencyCandidates",
+// 							},
+// 						},
+// 						// Calculate vote margin
+// 						{
+// 							$addFields: {
+// 								voteMargin: {
+// 									$cond: {
+// 										if: { $gt: [{ $size: "$electionStats" }, 0] },
+// 										then: {
+// 											$let: {
+// 												vars: {
+// 													hotCandidateStats: "$electionStatsObj",
+// 													sortedCandidates: "$constituencyCandidates",
+// 												},
+// 												in: {
+// 													$cond: {
+// 														if: { $gt: [{ $size: "$$sortedCandidates" }, 0] },
+// 														then: {
+// 															$let: {
+// 																vars: {
+// 																	hotCandidateVotes: {
+// 																		$ifNull: ["$$hotCandidateStats.votesReceived", 0],
+// 																	},
+// 																	hotCandidateId: "$_id",
+// 																	topCandidate: { $arrayElemAt: ["$$sortedCandidates", 0] },
+// 																	secondCandidate: { $arrayElemAt: ["$$sortedCandidates", 1] },
+// 																},
+// 																in: {
+// 																	$cond: {
+// 																		if: {
+// 																			$and: [
+// 																				{ $ne: ["$$topCandidate", null] },
+// 																				{
+// 																					$eq: [
+// 																						"$$hotCandidateId",
+// 																						"$$topCandidate.candidate",
+// 																					],
+// 																				},
+// 																			],
+// 																		},
+// 																		then: {
+// 																			// Hot candidate is winning - compare with second highest
+// 																			margin: {
+// 																				$subtract: [
+// 																					"$$hotCandidateVotes",
+// 																					{
+// 																						$ifNull: [
+// 																							"$$secondCandidate.votesReceived",
+// 																							0,
+// 																						],
+// 																					},
+// 																				],
+// 																			},
+// 																			isWinning: true,
+// 																		},
+// 																		else: {
+// 																			// Hot candidate is losing - compare with highest
+// 																			margin: {
+// 																				$subtract: [
+// 																					"$$hotCandidateVotes",
+// 																					{
+// 																						$ifNull: [
+// 																							"$$topCandidate.votesReceived",
+// 																							0,
+// 																						],
+// 																					},
+// 																				],
+// 																			},
+// 																			isWinning: false,
+// 																		},
+// 																	},
+// 																},
+// 															},
+// 														},
+// 														else: null,
+// 													},
+// 												},
+// 											},
+// 										},
+// 										else: null,
+// 									},
+// 								},
+// 							},
+// 						},
+// 						// Final project
+// 						{
+// 							$project: {
+// 								name: 1,
+// 								hindiName: 1,
+// 								image: 1,
+// 								party: { $arrayElemAt: ["$party", 0] },
+// 								constituency: { $arrayElemAt: ["$constituency", 0] },
+// 								electionStats: "$electionStatsObj",
+// 								voteMargin: 1,
+// 							},
+// 						},
+// 					],
+// 					as: "hotCandidates",
+// 				},
+// 			},
+
+// 			// Final projection - use $map to transform hotCandidates array
+// 			{
+// 				$project: {
+// 					_id: 0,
+// 					hotCandidates: {
+// 						$map: {
+// 							input: "$hotCandidates",
+// 							as: "candidate",
+// 							in: {
+// 								name: "$$candidate.name",
+// 								hindiName: "$$candidate.hindiName",
+// 								image: "$$candidate.image",
+// 								party: {
+// 									party: "$$candidate.party.party",
+// 									partyHindi: "$$candidate.party.partyHindi",
+// 									color_code: "$$candidate.party.color_code",
+// 								},
+// 								constituency: {
+// 									name: "$$candidate.constituency.name",
+// 									constituencyHindi: "$$candidate.constituency.constituencyHindi",
+// 								},
+// 								electionStats: "$$candidate.electionStats",
+// 								voteMargin: "$$candidate.voteMargin",
+// 							},
+// 						},
+// 					},
+// 				},
+// 			},
+// 		]);
+
+// 		if (!result.length) {
+// 			return res.status(404).json({
+// 				success: false,
+// 				message: "Election not found",
+// 			});
+// 		}
+// 		// redis.set(key, {
+// 		// 	success: true,
+// 		// 	data: result[0].hotCandidates,
+// 		// });
+
+// 		return res.json({
+// 			success: true,
+// 			data: result[0].hotCandidates,
+// 		});
+// 	} catch (error) {
+// 		console.error("Error:", error);
+// 		res.status(500).json({
+// 			success: false,
+// 			message: "Internal server error",
+// 		});
+// 	}
+// });
+
 router.get("/election/hot-candidates", async (req, res) => {
 	try {
+		console.log('something')
 		const { state, year } = req.query;
 
-		const key = `widget_bihar_hot_candidate_${state}_${year}`;
-		const cachedResults = await redis.get(key);
-
-		if (cachedResults) {
-			return res.json(cachedResults);
-		}
-
 		const result = await TempElection.aggregate([
-			// Match the election
 			{ $match: { state: state, year: Number(year) } },
 
-			// Lookup candidates with population
 			{
 				$lookup: {
 					from: "candidates",
-					let: { candidateIds: "$electionInfo.candidates" },
+					let: {
+						candidateIds: "$electionInfo.candidates",
+						electionId: "$_id",
+					},
 					pipeline: [
 						{
 							$match: {
@@ -1627,37 +1950,235 @@ router.get("/election/hot-candidates", async (req, res) => {
 								hotCandidate: true,
 							},
 						},
-						// Populate party
+
 						{
 							$lookup: {
 								from: "parties",
 								localField: "party",
 								foreignField: "_id",
 								as: "party",
-								pipeline: [
-									{ $project: { party: 1, color_code: 1 } }, // Only get party name and color
-								],
+								pipeline: [{ $project: { party: 1, color_code: 1, partyHindi: 1 } }],
 							},
 						},
-						// Populate constituency
+
 						{
 							$lookup: {
 								from: "constituencies",
 								localField: "constituency",
 								foreignField: "_id",
 								as: "constituency",
-								pipeline: [
-									{ $project: { name: 1 } }, // Only get constituency name
-								],
+								pipeline: [{ $project: { name: 1, constituencyHindi: 1 } }],
 							},
 						},
-						// Project only needed fields
+
+						//
+						// LOOKUP ELECTIONCANDIDATES
+						//
+						{
+							$lookup: {
+								from: "electioncandidates",
+								let: {
+									candidateId: "$_id",
+									electionId: "$$electionId",
+								},
+								pipeline: [
+									{
+										$match: {
+											$expr: {
+												$and: [
+													{ $eq: ["$candidate", "$$candidateId"] },
+													{ $eq: ["$election", "$$electionId"] },
+												],
+											},
+										},
+									},
+									{
+										$project: {
+											votesReceived: 1,
+											status: 1,
+											constituency: 1,
+											_id: 0,
+										},
+									},
+								],
+								as: "electionStats",
+							},
+						},
+
+						{
+							$addFields: {
+								electionStatsObj: { $arrayElemAt: ["$electionStats", 0] },
+							},
+						},
+						{
+							$addFields: {
+								constituencyIdFromStats: {
+									$ifNull: ["$electionStatsObj.constituency", null],
+								},
+							},
+						},
+
+						//
+						// ⭐ NEW LOOKUP: electionconstituencies (status)
+						//
+						{
+							$lookup: {
+								from: "electionconstituencies",
+								let: {
+									electionId: "$$electionId",
+									constituencyId: "$constituencyIdFromStats",
+								},
+								pipeline: [
+									{
+										$match: {
+											$expr: {
+												$and: [
+													{ $eq: ["$election", "$$electionId"] },
+													{ $eq: ["$constituency", "$$constituencyId"] },
+												],
+											},
+										},
+									},
+									{ $project: { status: 1, _id: 0 } },
+								],
+								as: "electionConstituencyStatus",
+							},
+						},
+
+						{
+							$addFields: {
+								electionConstituencyStatus: {
+									$arrayElemAt: ["$electionConstituencyStatus", 0],
+								},
+							},
+						},
+						// ⭐ END OF NEW LOOKUP
+						//
+
+						{
+							$lookup: {
+								from: "electioncandidates",
+								let: {
+									electionId: "$$electionId",
+									constituencyId: "$constituencyIdFromStats",
+									hotCandidateId: "$_id",
+								},
+								pipeline: [
+									{
+										$match: {
+											$expr: {
+												$and: [
+													{ $eq: ["$election", "$$electionId"] },
+													{ $eq: ["$constituency", "$$constituencyId"] },
+												],
+											},
+										},
+									},
+									{ $sort: { votesReceived: -1 } },
+									{
+										$project: {
+											candidate: 1,
+											votesReceived: 1,
+											_id: 0,
+										},
+									},
+								],
+								as: "constituencyCandidates",
+							},
+						},
+
+						{
+							$addFields: {
+								voteMargin: {
+									$cond: {
+										if: { $gt: [{ $size: "$electionStats" }, 0] },
+										then: {
+											$let: {
+												vars: {
+													hotCandidateStats: "$electionStatsObj",
+													sortedCandidates: "$constituencyCandidates",
+												},
+												in: {
+													$cond: {
+														if: { $gt: [{ $size: "$$sortedCandidates" }, 0] },
+														then: {
+															$let: {
+																vars: {
+																	hotCandidateVotes: {
+																		$ifNull: ["$$hotCandidateStats.votesReceived", 0],
+																	},
+																	hotCandidateId: "$_id",
+																	topCandidate: { $arrayElemAt: ["$$sortedCandidates", 0] },
+																	secondCandidate: { $arrayElemAt: ["$$sortedCandidates", 1] },
+																},
+																in: {
+																	$cond: {
+																		if: {
+																			$and: [
+																				{ $ne: ["$$topCandidate", null] },
+																				{
+																					$eq: [
+																						"$$hotCandidateId",
+																						"$$topCandidate.candidate",
+																					],
+																				},
+																			],
+																		},
+																		then: {
+																			margin: {
+																				$subtract: [
+																					"$$hotCandidateVotes",
+																					{
+																						$ifNull: [
+																							"$$secondCandidate.votesReceived",
+																							0,
+																						],
+																					},
+																				],
+																			},
+																			isWinning: true,
+																		},
+																		else: {
+																			margin: {
+																				$subtract: [
+																					"$$hotCandidateVotes",
+																					{
+																						$ifNull: [
+																							"$$topCandidate.votesReceived",
+																							0,
+																						],
+																					},
+																				],
+																			},
+																			isWinning: false,
+																		},
+																	},
+																},
+															},
+														},
+														else: null,
+													},
+												},
+											},
+										},
+										else: null,
+									},
+								},
+							},
+						},
+
 						{
 							$project: {
 								name: 1,
+								hindiName: 1,
 								image: 1,
-								party: { $arrayElemAt: ["$party", 0] }, // Unwind party
-								constituency: { $arrayElemAt: ["$constituency", 0] }, // Get first constituency
+								party: { $arrayElemAt: ["$party", 0] },
+								constituency: { $arrayElemAt: ["$constituency", 0] },
+								electionStats: "$electionStatsObj",
+								voteMargin: 1,
+								//
+								// ⭐ INCLUDE NEW FIELD
+								electionConstituencyStatus: "$electionConstituencyStatus.status",
 							},
 						},
 					],
@@ -1665,16 +2186,31 @@ router.get("/election/hot-candidates", async (req, res) => {
 				},
 			},
 
-			// Project final structure
 			{
 				$project: {
 					_id: 0,
 					hotCandidates: {
-						name: 1,
-						image: 1,
-						"party.party": 1,
-						"party.color_code": 1,
-						"constituency.name": 1,
+						$map: {
+							input: "$hotCandidates",
+							as: "candidate",
+							in: {
+								name: "$$candidate.name",
+								hindiName: "$$candidate.hindiName",
+								image: "$$candidate.image",
+								party: {
+									party: "$$candidate.party.party",
+									partyHindi: "$$candidate.party.partyHindi",
+									color_code: "$$candidate.party.color_code",
+								},
+								constituency: {
+									name: "$$candidate.constituency.name",
+									constituencyHindi: "$$candidate.constituency.constituencyHindi",
+								},
+								electionStats: "$$candidate.electionStats",
+								voteMargin: "$$candidate.voteMargin",
+								electionConstituencyStatus: "$$candidate.electionConstituencyStatus",
+							},
+						},
 					},
 				},
 			},
@@ -1686,10 +2222,6 @@ router.get("/election/hot-candidates", async (req, res) => {
 				message: "Election not found",
 			});
 		}
-		redis.set(key, {
-			success: true,
-			data: result[0].hotCandidates,
-		});
 
 		return res.json({
 			success: true,
@@ -1703,6 +2235,7 @@ router.get("/election/hot-candidates", async (req, res) => {
 		});
 	}
 });
+
 
 router.get("/election/hot-candidate/result", async (req, res) => {
 	try {
@@ -1724,7 +2257,6 @@ router.get("/election/hot-candidate/result", async (req, res) => {
 			key += `_${candidateName}`;
 		}
 
-		
 		const cachedResults = await redis.get(key);
 
 		if (cachedResults) {
@@ -1837,7 +2369,7 @@ router.get("/election/hot-candidate/result", async (req, res) => {
 		}
 		redis.set(key, {
 			success: true,
-			data: results
+			data: results,
 		});
 
 		res.status(200).json({

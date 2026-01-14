@@ -74,13 +74,221 @@ thead{
 <body class="bg-gray-50">
 	<%- include('navbar.ejs') %>
 
-		<div class="container mx-auto px-4 py-8">
+		<div class="w-[800px] mx-auto px-4 py-8">
 			<div class="mb-6 flex justify-between items-center"></div>
 
-			<form id="electionForm" class="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-6">
+			<form id="electionForm" class="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-6" onsubmit="return false;">
 				<!-- Hidden fields -->
 				<input type="hidden" name="_id" value="<%= election._id %>" />
 				<input type="hidden" id="currentUserId" value="<%= user._id %>" />
+
+						<!-- Candidates Section -->
+						<div class="mb-8 border-b pb-4">
+							<div
+								class="bg-white rounded-lg shadow-md p-6 max-w-4xl mx-auto">
+								<h2 class="text-xl font-bold text-gray-800 mb-4">
+									Candidate Directory</h2>
+
+								<!-- Search and filters container -->
+								<div class="flex gap-4">
+									<!-- Search input -->
+									<div class="md:col-span-1">
+										<label for="candidateTableSearch"
+											class="block text-sm font-lg text-gray-700 mb-2">
+											Search Candidates
+										</label>
+										<div class="relative">
+											<input type="text"
+												id="candidateTableSearch"
+												placeholder="Search by name..."
+												class="p-2 w-full h-10 rounded-md border shadow-sm"
+												onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }" />
+										</div>
+									</div>
+
+									<!-- Party filter -->
+									<div>
+										<label for="candidatePartyFilter"
+											class="block text-sm font-medium text-gray-700 mb-2">
+											Filter by Party
+										</label>
+										<select id="candidatePartyFilter"
+											class="w-full h-10 p-2 rounded-md border border-gray-300 shadow-sm  outline-none">
+											<option value="">All Parties
+											</option>
+											<!-- Options will be populated by JavaScript -->
+										</select>
+									</div>
+
+									<!-- Constituency filter -->
+									<div>
+										<label for="candidateConstituencyFilter"
+											class="block text-sm font-medium text-gray-700 mb-2">
+											Filter by Constituency
+										</label>
+										<select id="candidateConstituencyFilter"
+											class="w-full h-10 p-2 rounded-md border border-gray-300 shadow-sm  outline-none">
+											<option value="">All
+												Constituencies</option>
+											<!-- Options will be populated by JavaScript -->
+										</select>
+									</div>
+								</div>
+
+								<!-- Filters active indicator -->
+								<div id="activeFilters"
+									class="hidden items-center mb-4 py-2 px-3 bg-blue-50 text-sm text-blue-600 rounded-md">
+
+									<span id="activeFiltersText"
+										class="ml-1 font-medium">
+									</span>
+									<button type="button" id="clearFilters"
+										class="ml-auto flex items-center text-red-500 hover:text-red-700"
+										>
+										<svg xmlns="http://www.w3.org/2000/svg"
+											width="16" height="16"
+											viewBox="0 0 24 24" fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											class="mr-1">
+											<circle cx="12" cy="12" r="10">
+											</circle>
+											<line x1="15" y1="9" x2="9"
+												y2="15"></line>
+											<line x1="9" y1="9" x2="15"
+												y2="15"></line>
+										</svg>
+										Clear
+									</button>
+								</div>
+							</div>
+
+							<div class="flex justify-between items-center mb-4">
+								<h2 class="text-xl font-bold text-gray-800">Candidates
+								</h2>
+								<% if (userRole==='admin' ) { %>
+									<button type="button" id="addCandidateBtn"
+										class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+										<i class="fas fa-plus mr-2"></i>Add
+										Candidate
+									</button>
+									<% } %>
+							</div>
+							<div class="overflow-x-auto">
+								<table class="min-w-full divide-y divide-gray-200">
+									<thead class="bg-gray-50">
+										<tr>
+											<th scope="col"
+												class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+												Name
+											</th>
+											<th scope="col"
+												class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+												Party
+											</th>
+											<th scope="col"
+												class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+												Constituency
+											</th>
+											<th scope="col"
+												class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+												Votes
+											</th>
+											<th scope="col"
+												class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+												Actions
+											</th>
+										</tr>
+									</thead>
+									<tbody id="candidatesTableBody"
+										class="bg-white divide-y divide-gray-200">
+										<% if (candidateElectionDetails.length>
+											0) { %> <%
+												candidateElectionDetails.forEach((candidate,
+												index)=> { %>
+												<tr
+													id="candidate-row-<%= candidate.candidate._id %>">
+													<td
+														class="px-6 py-4">
+														<%= candidate.candidate.name
+															|| ''
+															%>
+													</td>
+													<td
+														class="px-6 py-4">
+														<%= candidate.candidate.party.party
+															|| ''
+															%>
+													</td>
+
+													<td
+														class="px-6 py-4">
+														<%= candidate.candidate.constituency.name
+															|| ''
+															%>
+															(
+															<%= candidate.constituencyStatus
+																%>
+																)
+													</td>
+													<td
+														class="px-6 py-4">
+														<input type="number"
+															name="candidates[<%= candidate.candidate._id %>][votes]"
+															value="<%= candidate.candidate.votesReceived %>"
+															autocomplete="off"
+															class="block rounded-md w-20 shadow-sm p-1 px-2"
+															<%=candidate.constituencyStatus==='ongoing'
+															? ''
+															: 'readonly'
+															%>
+														/>
+													</td>
+													<td style="display: flex; gap: 5px;"
+														class="px-6 py-4">
+														<button type="button"
+															onclick="updateCandidateVotes('<%= candidate.candidate._id %>')"
+															class="px-2 py-1 bg-green-500 text-white rounded-md hover:bg-green-600 mr-2">
+															<i
+																class="fas fa-save"></i>
+														</button>
+														<button type="button"
+															onclick="editCandidate('<%= candidate.candidate._id %>')"
+															style="background-color: rgb(244, 179, 68)"
+															class="px-2 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 mr-2">
+															<i
+																class="fas fa-edit"></i>
+														</button>
+
+														<% if (userRole==='admin'
+															)
+															{
+															%>
+															<button type="button"
+																onclick="deleteCandidate('<%= candidate.candidate._id %>')"
+																class="px-2 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 mr-2">
+																<i
+																	class="fas fa-trash"></i>
+															</button>
+															<% }
+																%>
+													</td>
+												</tr>
+												<% }); %>
+													<% } %>
+									</tbody>
+								</table>
+							</div>
+					<div class="flex justify-end mb-6">
+						<button type="button" id="updateAllCandidatesVotes"
+							onclick="updateAllCandidateVotes()"
+							class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+							<i class="fas fa-sync-alt mr-2"></i>Update All Candidates
+						</button>
+					</div>
+						</div>
 
 				<!-- Main State Info -->
 				<div class="space-y-6 mb-8 w-40">
@@ -221,7 +429,7 @@ thead{
 											%> <% partyElectionDetails.forEach((party,
 												index)=> { %>
 												<tr
-													id="party-row-<%= index %>">
+													id="party-row-<%= party._id %>">
 													<td
 														class="px-6 py-4">
 														<%= party.party.party
@@ -231,8 +439,9 @@ thead{
 													<td
 														class="px-6 py-4">
 														<input type="number"
-															name="parties[<%= index %>][votes]"
+															name="parties[<%= party._id %>][votes]"
 															value="<%= party.seatsWon || 0 %>"
+															autocomplete="off"
 															class="block rounded-md w-20 shadow-sm p-1 px-2" />
 													</td>
 													<td
@@ -265,259 +474,6 @@ thead{
 															%>
 															<button type="button"
 																onclick="deleteParty('<%= party.party._id %>')"
-																class="px-2 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 mr-2">
-																<i
-																	class="fas fa-trash"></i>
-															</button>
-															<% }
-																%>
-													</td>
-												</tr>
-												<% }); %>
-													<% } %>
-									</tbody>
-								</table>
-							</div>
-						</div>
-
-						<!-- Candidates Section -->
-						<div class="mb-8 border-b pb-4" style="height: 700px;">
-							<div
-								class="bg-white rounded-lg shadow-md p-6 max-w-4xl mx-auto">
-								<h2 class="text-xl font-bold text-gray-800 mb-4">
-									Candidate Directory</h2>
-
-								<!-- Search and filters container -->
-								<div class="flex gap-4">
-									<!-- Search input -->
-									<div class="md:col-span-1">
-										<label for="candidateTableSearch"
-											class="block text-sm font-lg text-gray-700 mb-2">
-											Search Candidates
-										</label>
-										<div class="relative">
-											<input type="text"
-												id="candidateTableSearch"
-												name="searchTerm"
-												value="<%= locals.searchTerm || '' %>"
-												placeholder="Search by name..."
-												class="p-2 w-full h-10 rounded-md border shadow-sm" />
-										</div>
-									</div>
-
-									<!-- Party filter -->
-									<div>
-										<label for="candidatePartyFilter"
-											class="block text-sm font-medium text-gray-700 mb-2">
-											Filter by Party
-										</label>
-										<select id="candidatePartyFilter"
-											name="partyFilter"
-											class="w-full h-10 p-2 rounded-md border border-gray-300 shadow-sm  outline-none">
-											<option value="">All Parties
-											</option>
-											<% if(locals.parties) { %>
-												<% parties.forEach(function(party)
-													{ %>
-													<option value="<%= party.value %>"
-														<%=locals.selectedParty
-														&&
-														locals.selectedParty===party.value
-														? 'selected'
-														: '' %>>
-														<%= party.name
-															%>
-													</option>
-													<% }); %>
-														<% } %>
-										</select>
-									</div>
-
-									<!-- Constituency filter -->
-									<div>
-										<label for="candidateConstituencyFilter"
-											class="block text-sm font-medium text-gray-700 mb-2">
-											Filter by Constituency
-										</label>
-										<select id="candidateConstituencyFilter"
-											name="constituencyFilter"
-											class="w-full h-10 p-2 rounded-md border border-gray-300 shadow-sm  outline-none">
-											<option value="">All
-												Constituencies</option>
-											<% if(locals.constituencies) {
-												%>
-												<% constituencies.forEach(function(constituency)
-													{ %>
-													<option value="<%= constituency.value %>"
-														<%=locals.selectedConstituency
-														&&
-														locals.selectedConstituency===constituency.value
-														? 'selected'
-														: '' %>>
-														<%= constituency.name
-															%>
-													</option>
-													<% }); %>
-														<% } %>
-										</select>
-									</div>
-								</div>
-
-								<!-- Filters active indicator -->
-								<div id="activeFilters"
-									class="<%= (locals.searchTerm || locals.selectedParty || locals.selectedConstituency) ? 'flex' : 'hidden' %> items-center mb-4 py-2 px-3 bg-blue-50 text-sm text-blue-600 rounded-md">
-
-									<span id="activeFiltersText"
-										class="ml-1 font-medium">
-										<% let filterTexts=[];
-											if(locals.searchTerm)
-											filterTexts.push(`"${locals.searchTerm}"`);
-											if(locals.selectedParty) { const
-											partyName=locals.parties.find(p=>
-											p.value ===
-											locals.selectedParty)?.name ||
-											locals.selectedParty;
-											filterTexts.push(`Party:
-											${partyName}`);
-											}
-											if(locals.selectedConstituency)
-											{
-											const constituencyName =
-											locals.constituencies.find(c =>
-											c.value ===
-											locals.selectedConstituency)?.name
-											|| locals.selectedConstituency;
-											filterTexts.push(`Constituency:
-											${constituencyName}`);
-											}
-											%>
-
-									</span>
-									<button id="clearFilters"
-										class="ml-auto flex items-center text-red-500 hover:text-red-700"
-										>
-										<svg xmlns="http://www.w3.org/2000/svg"
-											width="16" height="16"
-											viewBox="0 0 24 24" fill="none"
-											stroke="currentColor"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											class="mr-1">
-											<circle cx="12" cy="12" r="10">
-											</circle>
-											<line x1="15" y1="9" x2="9"
-												y2="15"></line>
-											<line x1="9" y1="9" x2="15"
-												y2="15"></line>
-										</svg>
-										Clear
-									</button>
-								</div>
-							</div>
-
-							<div class="flex justify-between items-center mb-4">
-								<h2 class="text-xl font-bold text-gray-800">Candidates
-								</h2>
-								<% if (userRole==='admin' ) { %>
-									<button type="button" id="addCandidateBtn"
-										class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
-										<i class="fas fa-plus mr-2"></i>Add
-										Candidate
-									</button>
-									<% } %>
-							</div>
-							<div style="height: 400px;" class="overflow-x-auto">
-								<table style="height: 400px; overflow: scroll;" class="min-w-full divide-y divide-gray-200">
-									<thead class="bg-gray-50">
-										<tr>
-											<th scope="col"
-												class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-												Name
-											</th>
-											<th scope="col"
-												class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-												Party
-											</th>
-											<th scope="col"
-												class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-												Constituency
-											</th>
-											<th scope="col"
-												class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-												Votes
-											</th>
-											<th scope="col"
-												class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-												Actions
-											</th>
-										</tr>
-									</thead>
-									<tbody id="candidatesTableBody" style="height: 500px;"
-										class="bg-white divide-y divide-gray-200">
-										<% if (candidateElectionDetails.length>
-											0) { %> <%
-												candidateElectionDetails.forEach((candidate,
-												index)=> { %>
-												<tr
-													id="candidate-row-<%= index %>">
-													<td
-														class="px-6 py-4">
-														<%= candidate.candidate.name
-															|| ''
-															%>
-													</td>
-													<td
-														class="px-6 py-4">
-														<%= candidate.candidate.party.party
-															|| ''
-															%>
-													</td>
-
-													<td
-														class="px-6 py-4">
-														<%= candidate.candidate.constituency.name
-															|| ''
-															%>
-															(
-															<%= candidate.constituencyStatus
-																%>
-																)
-													</td>
-													<td
-														class="px-6 py-4">
-														<input type="number"
-															name="candidates[<%= index %>][votes]"
-															value="<%= candidate.candidate.votesReceived %>"
-															class="block rounded-md w-20 shadow-sm p-1 px-2"
-															<%=candidate.constituencyStatus==='ongoing'
-															? ''
-															: 'readonly'
-															%>
-														/>
-													</td>
-													<td style="display: flex; flex-wrap: wrap; gap: 5px;"
-														class="px-6 py-4">
-														<button type="button"
-															onclick="updateCandidateVotes('<%= candidate.candidate._id %>')"
-															class="px-2 py-1 bg-green-500 text-white rounded-md hover:bg-green-600 mr-2">
-															<i
-																class="fas fa-save"></i>
-														</button>
-														<button type="button"
-															onclick="editCandidate('<%= candidate.candidate._id %>')"
-															style="background-color: rgb(244, 179, 68)"
-															class="px-2 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 mr-2">
-															<i
-																class="fas fa-edit"></i>
-														</button>
-
-														<% if (userRole==='admin'
-															)
-															{
-															%>
-															<button type="button"
-																onclick="deleteCandidate('<%= candidate.candidate._id %>')"
 																class="px-2 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 mr-2">
 																<i
 																	class="fas fa-trash"></i>
@@ -584,7 +540,7 @@ thead{
 														index)=>
 														{ %>
 														<tr
-															id="constituency-row-<%= index %>">
+															id="constituency-row-<%= constituency._id %>">
 															<td
 																class="px-6 py-4">
 																<%= constituency.constituency.name
@@ -1009,8 +965,6 @@ thead{
 			const isAdmin = adminIds.includes(currentUserId);
 			const allPartiesList = <%- JSON.stringify(allPartiesList || []) %>;
 			const allCandidatesList = <%- JSON.stringify(allCandidatesList || []) %>
-			const something = <%- JSON.stringify(candidateElectionDetails || []) %>
-				console.log(something)
 
 			// Dialog elements
 			const dialog = document.getElementById('partySelectionDialog');
@@ -1226,15 +1180,17 @@ thead{
 
 			function updateCandidateVotes(candidateId) {
 				// Find the row containing this candidate
-				const rowElement = document.querySelector(`tr:has(button[onclick*="${candidateId}"])`);
+				const rowElement = document.getElementById(`candidate-row-${candidateId}`);
 				if (!rowElement) {
 					alert('Candidate not found in the table.');
 					return;
 				}
 
 				// Get the candidate votes and status from the row
-				const votesInput = rowElement.querySelector('input[name^="candidates"][name$="[votes]"]');
-
+				const votesInput = rowElement.querySelector(
+				  `input[name="candidates[${candidateId}][votes]"]`
+				);
+				console.log('this is votes input', votesInput)
 				const votes = votesInput ? parseInt(votesInput.value, 10) : 0;
 
 				// Get election ID from the hidden field
@@ -1265,13 +1221,79 @@ thead{
 					})
 					.then(data => {
 						alert('Candidate data updated successfully!');
-						window.location.reload()
 					})
 					.catch(error => {
 						alert('Failed to update candidate data. Please try again.');
 						window.location.reload()
 					});
 			}
+
+
+					function updateAllCandidateVotes() {
+						document.getElementById('updateAllCandidatesVotes').disabled = true;
+						document.getElementById('updateAllCandidatesVotes').textContent = 'Updating...';
+						const electionId = document.querySelector('input[name="_id"]').value;
+						const candidateRows = document.querySelectorAll('[id^="candidate-row-"]');
+
+						const candidates = [];
+
+						candidateRows.forEach(row => {
+							// Extract candidate ID from row ID
+							const candidateId = row.id.replace('candidate-row-', '');
+
+							// Find input for votes
+							const votesInput = row.querySelector(
+								`input[name="candidates[${candidateId}][votes]"]`
+							);
+
+							const votes = votesInput ? parseInt(votesInput.value, 10) : 0;
+
+							candidates.push({
+								candidate: candidateId,
+								votesReceived: votes
+							});
+						});
+
+						if (candidates.length === 0) {
+							alert('No candidates found to update.');
+							return;
+						}
+
+
+						const updateData = {
+							election: electionId,
+							candidates,
+							redisKeys: { state: electionState, year: electionYear, type: electionType },
+						};
+                                                fetch('/api/elections/temp-election/candidates/update-all', {
+						method: 'PUT',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify(updateData),
+						})
+						.then(response => {
+							if (!response.ok) {
+								throw new Error('Failed to update all candidate data');
+							}
+							return response.json();
+						})
+						.then(data => {
+							document.getElementById('updateAllCandidatesVotes').disabled = false;
+							document.getElementById('updateAllCandidatesVotes').innerHTML = `
+								<i class="fas fa-sync-alt mr-2"></i>Update All Candidates
+							`;
+							alert('All candidate data updated successfully!');
+							console.log('Updated documents:', data);
+						})
+						.catch(error => {
+							document.getElementById('updateAllCandidatesVotes').disabled = false;
+							document.getElementById('updateAllCandidatesVotes').innerHTML = `
+								<i class="fas fa-sync-alt mr-2"></i>Update All Candidates
+							`;
+							console.error(error);
+							alert('Failed to update candidate data. Please try again.');
+						});
+
+					}
 
 			// Function to edit party details
 			function editParty(partyId) {
@@ -1300,6 +1322,11 @@ thead{
 			}
 
 			function deleteCandidate(candidateId) {
+				// Show confirmation dialog
+				if (!confirm('Are you sure you want to delete this candidate from the election? This action cannot be undone.')) {
+					return; // User cancelled, do nothing
+				}
+
 				const electionId = document.querySelector('input[name="_id"]').value;
 				fetch(`/api/elections/temp-election/candidate/delete/${candidateId}/${electionId}`, {
 					method: 'DELETE',
@@ -1310,21 +1337,23 @@ thead{
 						window.location.reload()
 					}
 				}).catch(err => {
-					alert('Failed to delete party');
+					alert('Failed to delete candidate');
 					window.location.reload()
 				})
 			}
 
 			function updatePartyVotes(partyId) {
 				// Find the row containing this party
-				const rowElement = document.querySelector(`tr[id^="party-row-"]:has(button[onclick*="${partyId}"])`);
+				const rowElement = document.getElementById(`party-row-${partyId}`);
 				if (!rowElement) {
 					alert('Party not found in the table.');
 					return;
 				}
 				// Get the party name and votes from the row
 				const partyNameInput = rowElement.querySelector('input[name^="parties"][name$="[party]"]');
-				const votesInput = rowElement.querySelector('input[name^="parties"][name$="[votes]"]');
+				  const votesInput = rowElement.querySelector(
+				    `input[name="parties[${partyId}][votes]"]`
+				  );
 
 				const partyName = partyNameInput ? partyNameInput.value : '';
 				const votes = votesInput ? parseInt(votesInput.value, 10) : 0;
@@ -1612,7 +1641,11 @@ thead{
 				candidateTableSearch.addEventListener('input', filterCandidateTable);
 				candidatePartyFilter.addEventListener('change', filterCandidateTable);
 				candidateConstituencyFilter.addEventListener('change', filterCandidateTable);
-				clearFiltersBtn.addEventListener('click', clearAllFilters);
+				clearFiltersBtn.addEventListener('click', function(e) {
+					e.preventDefault();
+					e.stopPropagation();
+					clearAllFilters(e);
+				});
 
 				// Function to populate the filter dropdowns
 				function populateFilters() {
@@ -1690,6 +1723,28 @@ thead{
 					}
 
 					// Filter each row
+					// rows.forEach(row => {
+					// 	const nameCell = row.cells[0];
+					// 	const partyCell = row.cells[1];
+					// 	const constituencyCell = row.cells[2];
+
+					// 	const name = nameCell.textContent.toLowerCase();
+					// 	const party = partyCell.textContent.toLowerCase();
+					// 	const constituency = constituencyCell.textContent.toLowerCase();
+
+					// 	// Check if row matches all active filters
+					// 	const matchesSearch = !searchTerm || name.includes(searchTerm);
+					// 	const matchesParty = !partyFilter || party.includes(partyFilter.toLowerCase());
+					// 	const matchesConstituency = !constituencyFilter ||
+					// 		constituency.includes(constituencyFilter.toLowerCase());
+
+					// 	// Show or hide the row
+					// 	if (matchesSearch && matchesParty && matchesConstituency) {
+					// 		row.style.display = '';
+					// 	} else {
+					// 		row.style.display = 'none';
+					// 	}
+					// });
 					rows.forEach(row => {
 						const nameCell = row.cells[0];
 						const partyCell = row.cells[1];
@@ -1697,37 +1752,62 @@ thead{
 
 						const name = nameCell.textContent.toLowerCase();
 						const party = partyCell.textContent.toLowerCase();
-						const constituency = constituencyCell.textContent.toLowerCase();
 
-						// Check if row matches all active filters
-						const matchesSearch = !searchTerm || name.includes(searchTerm);
-						const matchesParty = !partyFilter || party.includes(partyFilter.toLowerCase());
-						const matchesConstituency = !constituencyFilter ||
-							constituency.includes(constituencyFilter.toLowerCase());
+						// Raw constituency text
+						let constituencyRaw = constituencyCell.textContent.toLowerCase().trim();
 
-						// Show or hide the row
-						if (matchesSearch && matchesParty && matchesConstituency) {
-							row.style.display = '';
-						} else {
-							row.style.display = 'none';
-						}
+						// Remove trailing status: "( ongoing )", "( completed )", etc.
+						constituencyRaw = constituencyRaw.replace(/\(\s*ongoing\s*\)$/g, "").trim();
+						constituencyRaw = constituencyRaw.replace(/\(\s*completed\s*\)$/g, "").trim();
+
+						const constituencyClean = constituencyRaw; // keep full name: "kalyanpur (samastipur)"
+
+						const search = searchTerm.toLowerCase();
+						const partyFilterClean = partyFilter.toLowerCase();
+						const constituencyFilterClean = constituencyFilter.toLowerCase();
+
+						// Apply filters
+						const matchesSearch = !search || name.includes(search);
+
+						const matchesParty =
+							!partyFilterClean || party === partyFilterClean;
+
+						const matchesConstituency =
+							!constituencyFilterClean || constituencyClean === constituencyFilterClean;
+
+						row.style.display =
+							(matchesSearch && matchesParty && matchesConstituency)
+								? ""
+								: "none";
 					});
+
+
 				}
 
 				// Function to clear all filters
-				function clearAllFilters() {
+				function clearAllFilters(e) {
+					// Prevent any form submission or page reload
+					if (e) {
+						e.preventDefault();
+						e.stopPropagation();
+					}
+					
 					candidateTableSearch.value = '';
 					candidatePartyFilter.value = '';
 					candidateConstituencyFilter.value = '';
 
 					// Reset display
 					activeFilters.classList.add('hidden');
+					activeFiltersText.textContent = '';
 
 					// Show all rows
 					const rows = candidatesTableBody.querySelectorAll('tr');
 					rows.forEach(row => {
 						row.style.display = '';
 					});
+					
+					// Prevent any default behavior
+					return false;
 				}
 			});
 		</script>

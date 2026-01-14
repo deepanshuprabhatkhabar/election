@@ -157,7 +157,7 @@ class MapWidget {
 
             <div class="svg_container pb-12 flex flex-col items-center justify-center" id="svg_container" style="width: 100%">
                 <div class="const-map bihar">
-                    <svg xmlns="http://www.w3.org/2000/svg" xmlns:g="http://base.google.com/ns/1.0"
+                    <svg xmlns="https://www.w3.org/2000/svg" xmlns:g="https://base.google.com/ns/1.0"
                         style="width: 100%; height: 100%;" stroke-linejoin="round" stroke-linecap="round"
                         viewBox="0 0 800 630" height="400" width="500" baseProfile="tiny" version="1.2">
                         <g id="br">
@@ -2948,7 +2948,7 @@ class MapWidget {
     window.parent.postMessage({ election_iframe: height }, "*");
   }
 
-  async getData(clickedYear = "2020") {
+  async getData(clickedYear = "2025") {
     const params = new URLSearchParams(document.location.search);
     let stateName = params.get("state") || "Bihar";
     stateName = stateName[0].toUpperCase() + stateName.slice(1);
@@ -3038,7 +3038,7 @@ class MapWidget {
       partyColorElement.style.borderRadius = "50%";
 
       const partyNameElement = document.createElement("span");
-      partyNameElement.innerText = party.partyName;
+      partyNameElement.innerText = party.partyHindi || party.partyName;
 
       partyElement.appendChild(partyColorElement);
       partyElement.appendChild(partyNameElement);
@@ -3047,72 +3047,114 @@ class MapWidget {
   }
 
   applyColorsAndPopovers(data) {
-    data.data.constituencies.forEach((constituency) => {
-      const constituencyId = `cns-${constituency.constituencyId}`;
-      const path = document.querySelector(`path[data-id="${constituencyId}"]`);
+    // First, reset all constituencies to default state
+    const allPaths = document.querySelectorAll("path[data-id^='cns-']");
+    allPaths.forEach((path) => {
+      // Reset to default styling and clear all data attributes
+      path.style.fill = "#ffffff"; // Default color
+      path.removeAttribute("data-candidate");
+      path.removeAttribute("data-candidate-en");
+      path.removeAttribute("data-totalVotes");
+      path.removeAttribute("data-partyName");
+      path.removeAttribute("data-partyName-en");
+      path.removeAttribute("data-partyLogo");
+      path.removeAttribute("data-trail-partyLogo");
+      path.removeAttribute("data-trail-candidate");
+      path.removeAttribute("data-trail-candidate-en");
+      path.removeAttribute("data-trail-totalVotes");
+      path.removeAttribute("data-trail-partyName");
+      path.removeAttribute("data-trail-partyName-en");
+      path.removeAttribute("data-constituency");
+      path.removeAttribute("data-constituency-en");
+    });
 
-      if (path) {
-        const candidate = constituency.candidates[0];
-        const trailingCandidate = constituency.candidates[1];
+    // Then apply data only to constituencies that have data
+    if (data && data.data && data.data.constituencies) {
+      data.data.constituencies.forEach((constituency) => {
+        const constituencyId = `cns-${constituency.constituencyId}`;
+        const path = document.querySelector(`path[data-id="${constituencyId}"]`);
 
-        path.setAttribute(
-          "data-constituency",
-          constituency.constituencyName || ""
-        );
+        if (path) {
+          const candidate = constituency.candidates[0];
+          const trailingCandidate = constituency.candidates[1];
 
-        if (candidate) {
-          path.setAttribute("data-candidate", candidate.name || "Unknown");
-          path.setAttribute("data-totalVotes", candidate.votesReceived || "0");
-          path.style.fill = candidate.partyColor;
-          path.setAttribute("data-partyName", candidate.partyName || "N/A");
-          path.setAttribute(
-            "data-partyLogo",
-            candidate?.party?.party_logo || ""
-          );
+          // Use Hindi name with English fallback for constituency
+          const constituencyDisplayName = constituency.constituencyHindi || constituency.constituencyName || "";
+          path.setAttribute("data-constituency", constituencyDisplayName);
+          path.setAttribute("data-constituency-en", constituency.constituencyName || "");
 
-          if (trailingCandidate) {
+          if (candidate) {
+            // Use Hindi name with English fallback for candidate
+            const candidateDisplayName = candidate.hindiName || candidate.name || "Unknown";
+            path.setAttribute("data-candidate", candidateDisplayName);
+            path.setAttribute("data-candidate-en", candidate.name || "Unknown");
+            
+            path.setAttribute("data-totalVotes", candidate.votesReceived || "0");
+	    if(candidate.votesReceived && Number(candidate.votesReceived) > 0){
+		    path.style.fill = candidate.partyColor;
+	    }
+            
+            // Use Hindi name with English fallback for party
+            const partyDisplayName = candidate.partyHindi || candidate.partyName || "N/A";
+            path.setAttribute("data-partyName", partyDisplayName);
+            path.setAttribute("data-partyName-en", candidate.partyName || "N/A");
+            
             path.setAttribute(
-              "data-trail-partyLogo",
-              trailingCandidate?.party?.party_logo || ""
+              "data-partyLogo",
+              candidate?.partyLogo || ""
             );
-            path.setAttribute(
-              "data-trail-candidate",
-              trailingCandidate.name || ""
-            );
-            path.setAttribute(
-              "data-trail-totalVotes",
-              trailingCandidate?.votesReceived || ""
-            );
-            path.setAttribute(
-              "data-trail-partyName",
-              trailingCandidate?.partyName || ""
-            );
+
+            if (trailingCandidate) {
+              path.setAttribute(
+                "data-trail-partyLogo",
+                trailingCandidate?.partyLogo || ""
+              );
+              
+              // Use Hindi name with English fallback for trailing candidate
+              const trailCandidateDisplayName = trailingCandidate.hindiName || trailingCandidate.name || "";
+              path.setAttribute("data-trail-candidate", trailCandidateDisplayName);
+              path.setAttribute("data-trail-candidate-en", trailingCandidate.name || "");
+              
+              path.setAttribute(
+                "data-trail-totalVotes",
+                trailingCandidate?.votesReceived || ""
+              );
+              
+              // Use Hindi name with English fallback for trailing party
+              const trailPartyDisplayName = trailingCandidate.partyHindi || trailingCandidate.partyName || "";
+              path.setAttribute("data-trail-partyName", trailPartyDisplayName);
+              path.setAttribute("data-trail-partyName-en", trailingCandidate.partyName || "");
+            }
           }
         }
-      }
-    });
+      });
+    }
   }
 
   showPopover(event, path) {
-    const candidate = path.getAttribute("data-candidate") || "Unknown";
-    const totalVotes = path.getAttribute("data-totalVotes") || "0";
-    const partyName = path.getAttribute("data-partyName") || "N/A";
+    // Get Hindi names with English fallback
+    const candidate = path.getAttribute("data-candidate") || path.getAttribute("data-candidate-en") || "Unknown";
+    const totalVotes = path.getAttribute("data-totalVotes");
+    const partyName = path.getAttribute("data-partyName") || path.getAttribute("data-partyName-en") || "N/A";
     const color = path.getAttribute("data-color") || "#000";
-    const constituency = path.getAttribute("data-name" || "Unknown");
+    // Use constituency from data-constituency (Hindi) or data-name (fallback) or data-constituency-en
+    const constituency = path.getAttribute("data-constituency") || path.getAttribute("data-name") || path.getAttribute("data-constituency-en") || "Unknown";
     const won = path.getAttribute("data-won") || "awaiting";
     const partyLogo =
       path.getAttribute("data-partyLogo") ||
       "https://media.istockphoto.com/id/1409329028/vector/no-picture-available-placeholder-thumbnail-icon-illustration-design.jpg?s=612x612&w=0&k=20&c=_zOuJu755g2eEUioiOUdz_mHKJQJn-tDgIAhQzyeKUQ=";
 
-    const trailCandidate =
-      path.getAttribute("data-trail-candidate") || "Unknown";
-    const trailTotalVotes = path.getAttribute("data-trail-totalVotes") || "0";
-    const trailPartyName = path.getAttribute("data-trail-partyName") || "N/A";
+    // Get Hindi names with English fallback for trailing candidate
+    const trailCandidate = path.getAttribute("data-trail-candidate") || path.getAttribute("data-trail-candidate-en") || "";
+    const trailTotalVotes = path.getAttribute("data-trail-totalVotes");
+    const trailPartyName = path.getAttribute("data-trail-partyName") || path.getAttribute("data-trail-partyName-en") || "";
     const trailPartyLogo =
       path.getAttribute("data-trail-partyLogo") ||
       "https://media.istockphoto.com/id/1409329028/vector/no-picture-available-placeholder-thumbnail-icon-illustration-design.jpg?s=612x612&w=0&k=20&c=_zOuJu755g2eEUioiOUdz_mHKJQJn-tDgIAhQzyeKUQ=";
 
-    const showColors = Number(trailTotalVotes + totalVotes) > 0;
+    // Check if there's any data for this constituency
+    const hasData = candidate && candidate !== "" && totalVotes && totalVotes !== "0";
+    const showColors = hasData && Number(trailTotalVotes + totalVotes) > 0;
 
     if (this.currentTippy) {
       this.currentTippy.destroy();
@@ -3127,9 +3169,28 @@ class MapWidget {
         ? "LEADING"
         : "AWAITING";
 
-    this.currentTippy = tippy(event.target, {
-      content: `
-                <div class="popover-container">
+    // Create content based on whether data is available
+    let popoverContent;
+    
+    if (!hasData) {
+      popoverContent = `
+                <div class="popover-container-map-widget">
+                    <div class="card">
+                        <div class="constituency-header">
+                            ${constituency} (BIHAR)
+                        </div>
+                        <div class="no-data-message" style="text-align: center; padding: 20px; color: #666;">
+                            <div style="font-size: 16px; margin-bottom: 10px;">📊</div>
+                            <div style="font-weight: bold; margin-bottom: 5px;">कोई डेटा उपलब्ध नहीं</div>
+                            <div style="font-size: 12px;">इस वर्ष के लिए चुनाव डेटा उपलब्ध नहीं है</div>
+                        </div>
+                        <div class="arrow"></div>
+                    </div>
+                </div>
+            `;
+    } else {
+      popoverContent = `
+                <div class="popover-container-map-widget">
                     <div class="card">
                         <div class="constituency-header">
                             ${constituency} (BIHAR)
@@ -3194,7 +3255,11 @@ class MapWidget {
                         <div class="arrow"></div>
                     </div>
                 </div>
-            `,
+            `;
+    }
+
+    this.currentTippy = tippy(event.target, {
+      content: popoverContent,
       placement: "top",
       arrow: true,
       interactive: false,
@@ -3226,7 +3291,7 @@ generateLinkFromConstituencyName(constituencyName) {
   
 
   initializeMapInteractions() {
-    const paths = document.querySelectorAll("path");
+    const paths = document.querySelectorAll("path[data-id^='cns-']");
     if (paths) {
       paths.forEach((path) => {
         path.addEventListener("mouseenter", (e) => {
@@ -3246,12 +3311,14 @@ generateLinkFromConstituencyName(constituencyName) {
           }
 		  if(this.isMobile()){
 			setTimeout(() => {
-				const constituencyName = path?.getAttribute('data-name'); 
+				// Use English name for URL generation (fallback to data-name for backward compatibility)
+				const constituencyName = path?.getAttribute('data-constituency-en') || path?.getAttribute('data-name'); 
 				if(!constituencyName) return;
 				window.open(this.generateLinkFromConstituencyName(constituencyName), "_blank")
 			}, 2000)
 		  } else {
-			const constituencyName = path?.getAttribute('data-name'); 
+			// Use English name for URL generation (fallback to data-name for backward compatibility)
+			const constituencyName = path?.getAttribute('data-constituency-en') || path?.getAttribute('data-name'); 
 			if(!constituencyName) return;
 			window.open(this.generateLinkFromConstituencyName(constituencyName), "_blank")
 		  }

@@ -5,6 +5,7 @@ const constituencySchema = new mongoose.Schema({
 	state: { type: String, required: true },
 	constituencyId: { type: Number, required: true },
 	candidates: [{ type: mongoose.Schema.Types.ObjectId, ref: "Candidate" }],
+	constituencyHindi: { type: String }
 });
 
 const Constituency = mongoose.model("Constituency", constituencySchema);
